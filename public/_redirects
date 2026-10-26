@@ -1,2 +1,4 @@
-/api/canvas-proxy  /.netlify/functions/canvas-proxy  200
-/*                 /index.html                       200
+/canvas-proxy/lifeacademy/*  https://lifeacademy.instructure.com/api/:splat  200!
+/canvas-proxy/canvas/*       https://canvas.instructure.com/api/:splat       200!
+/api/canvas-proxy            /.netlify/functions/canvas-proxy                200
+/*                           /index.html                                     200

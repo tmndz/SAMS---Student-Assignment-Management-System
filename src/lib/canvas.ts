@@ -45,52 +45,51 @@ export const SAMPLE_CANVAS_ASSIGNMENTS: CanvasAPIAssignment[] = [
   },
 ];
 
-async function fetchCanvasAPI(targetUrl: string, token: string): Promise<any> {
-  const proxyUrl = `/api/canvas-proxy?url=${encodeURIComponent(targetUrl)}`;
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-  };
+async function fetchCanvasAPI(domain: string, pathAndQuery: string, token: string): Promise<any> {
+  const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // 1. Primary: Netlify Proxy (same-origin, bypasses browser CORS)
+  const cleanSubPath = pathAndQuery.replace(/^\/?api\/?/, '');
+
+  // 1. Direct Netlify CDN Edge Proxy (Instant, zero lambda, no CORS)
+  if (cleanDomain.includes('lifeacademy')) {
+    try {
+      const edgeUrl = `/canvas-proxy/lifeacademy/${cleanSubPath}`;
+      const res = await fetch(edgeUrl, { headers });
+      if (res.ok) return await res.json();
+    } catch {}
+  } else if (cleanDomain.includes('canvas.instructure.com')) {
+    try {
+      const edgeUrl = `/canvas-proxy/canvas/${cleanSubPath}`;
+      const res = await fetch(edgeUrl, { headers });
+      if (res.ok) return await res.json();
+    } catch {}
+  }
+
+  // 2. Netlify Serverless Function Proxy (/api/canvas-proxy?url=...)
+  const fullTargetUrl = `https://${cleanDomain}/api/${cleanSubPath}`;
+  const proxyUrl = `/api/canvas-proxy?url=${encodeURIComponent(fullTargetUrl)}`;
+
   try {
     const res = await fetch(proxyUrl, { headers });
-    if (res.ok) {
-      return await res.json();
-    }
-    const errText = await res.text();
-    console.warn(`Canvas proxy HTTP ${res.status}:`, errText);
-  } catch (proxyErr) {
-    console.warn('Canvas proxy request failed, trying direct fetch...', proxyErr);
-  }
+    if (res.ok) return await res.json();
+  } catch {}
 
-  // 2. Direct fallback (for non-browser or when proxy is bypassed)
-  try {
-    const directRes = await fetch(targetUrl, { headers });
-    if (directRes.ok) {
-      return await directRes.json();
-    }
-  } catch (directErr) {
-    console.warn('Direct Canvas fetch blocked by browser CORS:', directErr);
-  }
-
+  // Do NOT perform raw direct browser fetch to avoid CORS preflight errors
   return null;
 }
 
 export async function fetchCanvasCourses(domain: string, token: string): Promise<CanvasAPICourse[]> {
-  const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const url = `https://${cleanDomain}/api/v1/courses?enrollment_state=active&per_page=50`;
-
-  const data = await fetchCanvasAPI(url, token);
+  const data = await fetchCanvasAPI(domain, 'api/v1/courses?enrollment_state=active&per_page=50', token);
   if (Array.isArray(data) && data.length > 0) {
     return data;
   }
   if (Array.isArray(data)) {
     return data;
   }
-  console.warn('Using sample Canvas courses for demo.');
   return SAMPLE_CANVAS_COURSES;
 }
 
@@ -99,10 +98,7 @@ export async function fetchCanvasAssignments(
   token: string,
   courseId: number
 ): Promise<CanvasAPIAssignment[]> {
-  const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const url = `https://${cleanDomain}/api/v1/courses/${courseId}/assignments?per_page=50`;
-
-  const data = await fetchCanvasAPI(url, token);
+  const data = await fetchCanvasAPI(domain, `api/v1/courses/${courseId}/assignments?per_page=50`, token);
   if (Array.isArray(data)) {
     return data;
   }

@@ -7,14 +7,20 @@ function canvasProxyPlugin(): Plugin {
     name: 'canvas-proxy-dev',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        let targetUrl: string | null = null;
+
         if (req.url?.startsWith('/api/canvas-proxy')) {
           const urlObj = new URL(req.url, 'http://localhost');
-          const targetUrl = urlObj.searchParams.get('url');
-          if (!targetUrl) {
-            res.statusCode = 400;
-            res.end(JSON.stringify({ error: 'Missing url query parameter' }));
-            return;
-          }
+          targetUrl = urlObj.searchParams.get('url');
+        } else if (req.url?.startsWith('/canvas-proxy/lifeacademy/')) {
+          const subPath = req.url.replace('/canvas-proxy/lifeacademy/', '');
+          targetUrl = `https://lifeacademy.instructure.com/api/${subPath}`;
+        } else if (req.url?.startsWith('/canvas-proxy/canvas/')) {
+          const subPath = req.url.replace('/canvas-proxy/canvas/', '');
+          targetUrl = `https://canvas.instructure.com/api/${subPath}`;
+        }
+
+        if (targetUrl) {
           try {
             const authHeader = req.headers['authorization'];
             const headers: Record<string, string> = { Accept: 'application/json' };
@@ -30,13 +36,13 @@ function canvasProxyPlugin(): Plugin {
           }
           return;
         }
+
         next();
       });
     },
   };
 }
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), canvasProxyPlugin()],
   resolve: {
