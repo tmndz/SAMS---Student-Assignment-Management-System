@@ -115,8 +115,8 @@ export const ResourceHub: React.FC<ResourceHubProps> = ({
 
               <div className="pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <Avatar name={item.uploaded_by_name} src={item.uploaded_by_avatar} size="xs" />
-                  <span className="text-[11px] text-slate-400 truncate">{item.uploaded_by_name}</span>
+                  <Avatar name={item.uploaded_by_name || 'Classmate'} src={item.uploaded_by_avatar} size="xs" />
+                  <span className="text-[11px] text-slate-400 truncate">{item.uploaded_by_name || 'Classmate'}</span>
                 </div>
 
                 <a

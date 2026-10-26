@@ -17,8 +17,21 @@ export function useResources() {
     }
     try {
       if (isSupabaseConfigured) {
-        const { data: resData } = await supabase.from('resources').select('*').eq('block_id', block.id).order('created_at', { ascending: false });
-        if (resData) setResources(resData as ResourceItem[]);
+        const { data: resData } = await supabase
+          .from('resources')
+          .select('*, profile:profiles(id, full_name, avatar_url), assignment:assignments(id, title)')
+          .eq('block_id', block.id)
+          .order('created_at', { ascending: false });
+
+        if (resData) {
+          const formatted: ResourceItem[] = resData.map((r: any) => ({
+            ...r,
+            uploaded_by_name: r.profile?.full_name || (user && r.user_id === user.id ? user.full_name : 'Classmate'),
+            uploaded_by_avatar: r.profile?.avatar_url || (user && r.user_id === user.id ? user.avatar_url : undefined),
+            assignment_title: r.assignment?.title || r.assignment_title,
+          }));
+          setResources(formatted);
+        }
 
         const { data: ratData } = await supabase.from('resource_ratings').select('*');
         if (ratData) {

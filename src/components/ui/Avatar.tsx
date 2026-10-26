@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 export interface AvatarProps {
   src?: string;
-  name: string;
+  name?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   status?: 'online' | 'focusing' | 'idle' | 'offline';
   className?: string;
@@ -12,7 +12,7 @@ export interface AvatarProps {
 
 export const Avatar: React.FC<AvatarProps> = ({
   src,
-  name,
+  name = 'U',
   size = 'md',
   status,
   className,
@@ -20,14 +20,18 @@ export const Avatar: React.FC<AvatarProps> = ({
 }) => {
   const [imgError, setImgError] = React.useState(false);
 
-  const getInitials = (text: string) => {
-    return text
-      .split(' ')
-      .map((part) => part[0])
-      .filter(Boolean)
-      .slice(0, 2)
-      .join('')
-      .toUpperCase() || 'U';
+  const getInitials = (text?: string) => {
+    if (!text || typeof text !== 'string') return 'U';
+    return (
+      text
+        .trim()
+        .split(/\s+/)
+        .map((part) => part[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('')
+        .toUpperCase() || 'U'
+    );
   };
 
   const sizes = {
@@ -71,7 +75,7 @@ export const Avatar: React.FC<AvatarProps> = ({
         {src && !imgError ? (
           <img
             src={src}
-            alt={name}
+            alt={name || 'Avatar'}
             onError={() => setImgError(true)}
             className="w-full h-full object-cover"
           />
