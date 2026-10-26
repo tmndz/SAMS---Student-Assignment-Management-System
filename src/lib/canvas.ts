@@ -45,36 +45,68 @@ export const SAMPLE_CANVAS_ASSIGNMENTS: CanvasAPIAssignment[] = [
   },
 ];
 
-export async function fetchCanvasCourses(domain: string, token: string): Promise<CanvasAPICourse[]> {
-  const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const url = `https://${cleanDomain}/api/v1/courses?enrollment_state=active&per_page=50`;
-
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error(`Canvas API error: ${res.statusText}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('Canvas API direct call failed (likely CORS). Using sample Canvas courses.', err);
-    return SAMPLE_CANVAS_COURSES;
+async function fetchCanvasAPI(targetUrl: string, token: string): Promise<any> {
+  const proxyUrl = `/api/canvas-proxy?url=${encodeURIComponent(targetUrl)}`;
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
+
+  // 1. Primary: Netlify Proxy (same-origin, bypasses browser CORS)
+  try {
+    const res = await fetch(proxyUrl, { headers });
+    if (res.ok) {
+      return await res.json();
+    }
+    const errText = await res.text();
+    console.warn(`Canvas proxy HTTP ${res.status}:`, errText);
+  } catch (proxyErr) {
+    console.warn('Canvas proxy request failed, trying direct fetch...', proxyErr);
+  }
+
+  // 2. Direct fallback (for non-browser or when proxy is bypassed)
+  try {
+    const directRes = await fetch(targetUrl, { headers });
+    if (directRes.ok) {
+      return await directRes.json();
+    }
+  } catch (directErr) {
+    console.warn('Direct Canvas fetch blocked by browser CORS:', directErr);
+  }
+
+  return null;
 }
 
-export async function fetchCanvasAssignments(domain: string, token: string, courseId: number): Promise<CanvasAPIAssignment[]> {
-  const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+export async function fetchCanvasCourses(domain: string, token: string): Promise<CanvasAPICourse[]> {
+  const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const url = `https://${cleanDomain}/api/v1/courses?enrollment_state=active&per_page=50`;
+
+  const data = await fetchCanvasAPI(url, token);
+  if (Array.isArray(data) && data.length > 0) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data;
+  }
+  console.warn('Using sample Canvas courses for demo.');
+  return SAMPLE_CANVAS_COURSES;
+}
+
+export async function fetchCanvasAssignments(
+  domain: string,
+  token: string,
+  courseId: number
+): Promise<CanvasAPIAssignment[]> {
+  const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
   const url = `https://${cleanDomain}/api/v1/courses/${courseId}/assignments?per_page=50`;
 
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error(`Canvas API error: ${res.statusText}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('Canvas API assignments call failed. Using mock Canvas assignments for course', courseId);
-    return SAMPLE_CANVAS_ASSIGNMENTS.filter((a) => a.course_id === courseId);
+  const data = await fetchCanvasAPI(url, token);
+  if (Array.isArray(data)) {
+    return data;
   }
+  return SAMPLE_CANVAS_ASSIGNMENTS.filter((a) => a.course_id === courseId);
 }
 
 export function transformCanvasCourse(c: CanvasAPICourse, blockId: string): Course {
