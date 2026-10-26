@@ -4,10 +4,11 @@ import { useAssignments } from '@/hooks/useAssignments';
 import { useResources } from '@/hooks/useResources';
 import { usePresence } from '@/hooks/usePresence';
 import { useMessaging } from '@/hooks/useMessaging';
-import { INITIAL_ACTIVITY } from '@/lib/mockData';
-import { Assignment, ResourceItem, ActivityFeedItem } from '@/types';
+import { Assignment, ActivityFeedItem } from '@/types';
 
-// Components
+// Layout & Cohort Views
+import { LandingPage } from '@/components/layout/LandingPage';
+import { SelectCohortView } from '@/components/layout/SelectCohortView';
 import { Navbar } from '@/components/layout/Navbar';
 import { AuthModal } from '@/components/layout/AuthModal';
 import { JoinBlockModal } from '@/components/layout/JoinBlockModal';
@@ -23,10 +24,11 @@ import { AssignmentList } from '@/components/assignments/AssignmentList';
 import { AssignmentDrawer } from '@/components/assignments/AssignmentDrawer';
 import { CreateAssignmentModal } from '@/components/assignments/CreateAssignmentModal';
 import { ResourceHub } from '@/components/resources/ResourceHub';
+import { Layers } from 'lucide-react';
 
 export function App() {
-  const { user, block, joinBlockByCode, createBlock } = useAuth();
-  const { assignments, courses, priorityHero, toggleCompletion, createAssignment, refreshAssignments } = useAssignments();
+  const { user, block, isAuthenticated, isLoading, joinBlockByCode, createBlock, signOut } = useAuth();
+  const { assignments, priorityHero, toggleCompletion, createAssignment, refreshAssignments } = useAssignments();
   const { resources, rateResource, uploadFile, addLink } = useResources();
   const { peers, myFocusTaskId, myFocusTaskTitle, updateMyFocus } = usePresence();
   const { conversations, activeConversationId, setActiveConversationId, messages, sendMessage, getOrCreateDirectConversation } = useMessaging();
@@ -35,13 +37,14 @@ export function App() {
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'assignments' | 'resources'>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('all');
-  const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>(INITIAL_ACTIVITY);
+  const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
 
-  // Modals
+  // Modals & Drawers
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [isNewAsgOpen, setIsNewAsgOpen] = useState(false);
   const [isJoinBlockOpen, setIsJoinBlockOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [isCanvasSyncOpen, setIsCanvasSyncOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isAddResourceOpen, setIsAddResourceOpen] = useState(false);
@@ -72,13 +75,14 @@ export function App() {
 
   // Handle "Ask Advice" Trigger: Opens P2P Chat Thread linked to assignment
   const handleAskAdvice = async (peerId: string, peerName: string, asg: Assignment) => {
+    if (!user) return;
     await getOrCreateDirectConversation(peerId, peerName, asg.id, asg.title);
     setIsChatOpen(true);
     setActivityFeed((prev) => [
       {
         id: `act_${Date.now()}`,
         type: 'advice_asked',
-        actor_name: `${user.full_name} (You)`,
+        actor_name: `${user.full_name || 'You'}`,
         actor_avatar: user.avatar_url,
         target_title: `Asked ${peerName} on "${asg.title}"`,
         target_id: asg.id,
@@ -90,6 +94,7 @@ export function App() {
   };
 
   const handleToggleComplete = async (asgId: string) => {
+    if (!user) return;
     await toggleCompletion(asgId);
     const target = assignments.find((a) => a.id === asgId);
     if (target && !target.is_completed) {
@@ -97,7 +102,7 @@ export function App() {
         {
           id: `act_${Date.now()}`,
           type: 'completion',
-          actor_name: `${user.full_name} (You)`,
+          actor_name: `${user.full_name || 'You'}`,
           actor_avatar: user.avatar_url,
           target_title: target.title,
           target_id: target.id,
@@ -109,6 +114,48 @@ export function App() {
     }
   };
 
+  // 1. Initial Session Loading State
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col items-center justify-center space-y-3 font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-xl shadow-indigo-600/20 animate-pulse">
+          <Layers className="w-6 h-6 animate-spin" />
+        </div>
+        <p className="text-xs font-semibold text-slate-400 tracking-wide">Syncing BlockSync Cohort...</p>
+      </div>
+    );
+  }
+
+  // 2. Unauthenticated State: Clean Landing / Menu Page
+  if (!isAuthenticated || !user) {
+    return (
+      <>
+        <LandingPage
+          onOpenSignIn={() => { setAuthMode('signin'); setIsAuthOpen(true); }}
+          onOpenSignUp={() => { setAuthMode('signup'); setIsAuthOpen(true); }}
+        />
+        <AuthModal
+          isOpen={isAuthOpen}
+          onClose={() => setIsAuthOpen(false)}
+          defaultMode={authMode}
+        />
+      </>
+    );
+  }
+
+  // 3. Authenticated but No Academic Block Selected
+  if (!block) {
+    return (
+      <SelectCohortView
+        userName={user.full_name || user.email.split('@')[0]}
+        onJoinCode={joinBlockByCode}
+        onCreateBlock={createBlock}
+        onSignOut={signOut}
+      />
+    );
+  }
+
+  // 4. Authenticated Cohort Dashboard
   return (
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans">
       <Navbar
@@ -265,6 +312,7 @@ export function App() {
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
+        defaultMode={authMode}
       />
 
       <CanvasSyncModal

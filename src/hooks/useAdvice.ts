@@ -7,7 +7,7 @@ export function useAdvice() {
   const { user } = useAuth();
   const [threads, setThreads] = useState<AdviceMessage[]>(() => {
     const saved = localStorage.getItem('blocksync_advice_threads');
-    return saved ? JSON.parse(saved) : INITIAL_ADVICE_THREADS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   useEffect(() => {
@@ -21,6 +21,7 @@ export function useAdvice() {
     receiverName: string;
     message: string;
   }) => {
+    if (!user) return null;
     const newThread: AdviceMessage = {
       id: `adv_${Date.now()}`,
       assignment_id: params.assignmentId,
@@ -47,9 +48,9 @@ export function useAdvice() {
     );
   };
 
-  const userThreads = threads.filter(
-    (t) => t.sender_id === user.id || t.receiver_id === user.id
-  );
+  const userThreads = user
+    ? threads.filter((t) => t.sender_id === user.id || t.receiver_id === user.id)
+    : [];
 
   return {
     threads: userThreads,

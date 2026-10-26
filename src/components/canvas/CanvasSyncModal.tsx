@@ -14,8 +14,8 @@ interface CanvasSyncModalProps {
 
 export const CanvasSyncModal: React.FC<CanvasSyncModalProps> = ({ isOpen, onClose, onSyncComplete }) => {
   const { block } = useAuth();
-  const [domain, setDomain] = useState(block.canvas_domain || 'canvas.instructure.com');
-  const [token, setToken] = useState(block.canvas_token || '');
+  const [domain, setDomain] = useState(block?.canvas_domain || 'canvas.instructure.com');
+  const [token, setToken] = useState(block?.canvas_token || '');
   const { isSyncing, lastSynced, syncStatus, syncCanvas } = useCanvasSync();
   const [success, setSuccess] = useState(false);
 

@@ -31,7 +31,7 @@ export const JoinBlockModal: React.FC<JoinBlockModalProps> = ({
       setCode('');
       onClose();
     } else {
-      setError('Block code not found. Try "CS2A-SYNC" or create a new block.');
+      setError('Block code not found. Please verify the code with your classmate or section rep.');
     }
   };
 
@@ -79,7 +79,7 @@ export const JoinBlockModal: React.FC<JoinBlockModalProps> = ({
           <form onSubmit={handleJoin} className="space-y-3.5">
             <Input
               label="Block Join Code"
-              placeholder="e.g. CS2A-SYNC"
+              placeholder="e.g. CS2A-1234"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               error={error || undefined}
@@ -87,7 +87,7 @@ export const JoinBlockModal: React.FC<JoinBlockModalProps> = ({
               required
             />
             <p className="text-[11px] text-slate-500">
-              Demo Block Code: <strong className="text-indigo-400">CS2A-SYNC</strong> or <strong className="text-indigo-400">CS3B-PROG</strong>
+              Enter the unique join code shared by your class representative or peer.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" size="sm" onClick={onClose}>

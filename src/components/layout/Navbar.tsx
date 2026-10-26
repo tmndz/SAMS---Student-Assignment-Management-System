@@ -32,6 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const copyCode = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!block?.join_code) return;
     navigator.clipboard.writeText(block.join_code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -51,23 +52,25 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </div>
 
-          <div
-            onClick={onOpenJoinBlock}
-            className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 hover:border-indigo-500/40 cursor-pointer transition-all text-xs"
-          >
-            <div className="flex items-center gap-1.5 font-bold text-white">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>{block.name}</span>
-            </div>
-            <button
-              onClick={copyCode}
-              title="Copy Cohort Join Code"
-              className="text-[10px] text-slate-400 hover:text-indigo-300 font-mono px-1 py-0.5 rounded bg-slate-800 flex items-center gap-0.5"
+          {block && (
+            <div
+              onClick={onOpenJoinBlock}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 hover:border-indigo-500/40 cursor-pointer transition-all text-xs"
             >
-              {copied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
-              <span>{block.join_code}</span>
-            </button>
-          </div>
+              <div className="flex items-center gap-1.5 font-bold text-white">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>{block.name}</span>
+              </div>
+              <button
+                onClick={copyCode}
+                title="Copy Cohort Join Code"
+                className="text-[10px] text-slate-400 hover:text-indigo-300 font-mono px-1 py-0.5 rounded bg-slate-800 flex items-center gap-0.5"
+              >
+                {copied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
+                <span>{block.join_code}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Center Tabs */}
@@ -110,13 +113,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           </Button>
 
           {/* User Auth Profile */}
-          {isAuthenticated ? (
+          {isAuthenticated && user ? (
             <div className="relative group">
               <div className="flex items-center gap-2 p-1 pl-2 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer">
                 <span className="text-[11px] font-medium text-slate-300 hidden lg:inline truncate max-w-[80px]">
-                  {user.full_name?.split(' ')[0] || 'User'}
+                  {user.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'User'}
                 </span>
-                <Avatar name={user.full_name || 'U'} src={user.avatar_url} size="xs" status="online" />
+                <Avatar name={user.full_name || user.email || 'U'} src={user.avatar_url} size="xs" status="online" />
               </div>
               <div className="absolute right-0 top-full mt-2 w-48 p-2 rounded-xl bg-slate-900 border border-slate-800 shadow-2xl hidden group-hover:block z-50 animate-in fade-in zoom-in-95">
                 <div className="px-2 py-1 text-[11px] text-slate-400 truncate">{user.email}</div>

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { Conversation, Message } from '@/types';
 import { useAuth } from './useAuth';
+import { generateUUID } from '@/lib/utils';
 
 export function useMessaging(initialActiveId?: string | null) {
   const { user, block } = useAuth();
@@ -10,21 +11,47 @@ export function useMessaging(initialActiveId?: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
-  // 1. Load Conversations
+  // 1. Load Conversations for this Block
   const loadConversations = useCallback(async () => {
-    if (!isSupabaseConfigured || !block.id) return;
+    if (!block?.id) {
+      setConversations([]);
+      return;
+    }
     try {
-      const { data } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('block_id', block.id)
-        .order('created_at', { ascending: false });
+      if (isSupabaseConfigured) {
+        const { data } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('block_id', block.id)
+          .order('created_at', { ascending: false });
 
-      if (data) setConversations(data as Conversation[]);
+        if (data && data.length > 0) {
+          setConversations(data as Conversation[]);
+          if (!activeConversationId) setActiveConversationId(data[0].id);
+        } else {
+          // Create default block group channel if none exists
+          const defaultChannelId = generateUUID();
+          const defaultChannel: Conversation = {
+            id: defaultChannelId,
+            type: 'GROUP',
+            block_id: block.id,
+            title: `#${block.name.toLowerCase()}-cohort`,
+            created_at: new Date().toISOString(),
+          };
+          setConversations([defaultChannel]);
+          setActiveConversationId(defaultChannel.id);
+          await supabase.from('conversations').insert([{
+            id: defaultChannelId,
+            type: 'GROUP',
+            block_id: block.id,
+            title: defaultChannel.title,
+          }]);
+        }
+      }
     } catch (e) {
       console.warn('Failed to load conversations from Supabase:', e);
     }
-  }, [block.id]);
+  }, [block?.id, activeConversationId]);
 
   useEffect(() => {
     loadConversations();
@@ -62,10 +89,8 @@ export function useMessaging(initialActiveId?: string | null) {
   useEffect(() => {
     if (!activeConversationId) return;
     loadMessages(activeConversationId);
-
     if (!isSupabaseConfigured) return;
 
-    // Real-time listener for new messages in active conversation
     const channel = supabase
       .channel(`chat_${activeConversationId}`)
       .on('postgres_changes', {
@@ -84,15 +109,16 @@ export function useMessaging(initialActiveId?: string | null) {
     };
   }, [activeConversationId, loadMessages]);
 
-  // 3. Send Message
   const sendMessage = async (content: string, assignmentId?: string | null) => {
-    if (!activeConversationId || !content.trim()) return;
+    if (!activeConversationId || !content.trim() || !user) return;
+    const msgId = generateUUID();
+    const validAsgId = assignmentId && !assignmentId.startsWith('asg_sample') ? assignmentId : null;
 
     const newMsg: Message = {
-      id: `msg_${Date.now()}`,
+      id: msgId,
       conversation_id: activeConversationId,
       sender_id: user.id,
-      assignment_id: assignmentId || null,
+      assignment_id: validAsgId,
       content: content.trim(),
       sender_name: `${user.full_name} (You)`,
       sender_avatar: user.avatar_url,
@@ -103,28 +129,30 @@ export function useMessaging(initialActiveId?: string | null) {
 
     if (isSupabaseConfigured) {
       await supabase.from('messages').insert([{
-        id: newMsg.id,
+        id: msgId,
         conversation_id: activeConversationId,
         sender_id: user.id,
-        assignment_id: assignmentId || null,
+        assignment_id: validAsgId,
         content: content.trim(),
       }]);
     }
   };
 
-  // 4. Create or Get Direct P2P Advice Conversation
   const getOrCreateDirectConversation = async (peerId: string, peerName: string, assignmentId?: string, assignmentTitle?: string) => {
+    if (!block || !user) return null;
     const existing = conversations.find((c) => c.type === 'DIRECT' && (c.title?.includes(peerName) || c.assignment_id === assignmentId));
     if (existing) {
       setActiveConversationId(existing.id);
       return existing.id;
     }
 
+    const convId = generateUUID();
+    const validAsgId = assignmentId && !assignmentId.startsWith('asg_sample') ? assignmentId : null;
     const newConv: Conversation = {
-      id: `conv_${Date.now()}`,
+      id: convId,
       type: 'DIRECT',
       block_id: block.id,
-      assignment_id: assignmentId || null,
+      assignment_id: validAsgId,
       title: `Advice: ${peerName} (${assignmentTitle || 'Task'})`,
       created_at: new Date().toISOString(),
     };
@@ -133,10 +161,16 @@ export function useMessaging(initialActiveId?: string | null) {
     setActiveConversationId(newConv.id);
 
     if (isSupabaseConfigured) {
-      await supabase.from('conversations').insert([newConv]);
+      await supabase.from('conversations').insert([{
+        id: convId,
+        type: 'DIRECT',
+        block_id: block.id,
+        assignment_id: validAsgId,
+        title: newConv.title,
+      }]);
       await supabase.from('conversation_members').insert([
-        { conversation_id: newConv.id, user_id: user.id },
-        { conversation_id: newConv.id, user_id: peerId },
+        { conversation_id: convId, user_id: user.id },
+        { conversation_id: convId, user_id: peerId },
       ]);
     }
     return newConv.id;

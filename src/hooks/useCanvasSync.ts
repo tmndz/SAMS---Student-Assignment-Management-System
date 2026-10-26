@@ -11,8 +11,11 @@ export function useCanvasSync(onSyncSuccess?: (courses: Course[], assignments: A
   const [syncStatus, setSyncStatus] = useState<{ coursesCount: number; assignmentsCount: number } | null>(null);
 
   const syncCanvas = useCallback(async (domainInput?: string, tokenInput?: string) => {
+    if (!block?.id) {
+      return { success: false, error: 'Please join or create an academic block first.' };
+    }
     const domain = domainInput || block.canvas_domain || 'canvas.instructure.com';
-    const token = tokenInput || block.canvas_token || 'demo_token';
+    const token = tokenInput || block.canvas_token || '';
 
     setIsSyncing(true);
     try {
@@ -35,28 +38,37 @@ export function useCanvasSync(onSyncSuccess?: (courses: Course[], assignments: A
 
       // 3. Supabase Upsert Strategy (Preserves completions and resources)
       if (isSupabaseConfigured && block.id) {
+        const courseIdMap: Record<string, string> = {};
         for (const c of courses) {
-          await supabase.from('courses').upsert({
+          const { data: upsertedCourse } = await supabase.from('courses').upsert({
             canvas_course_id: c.canvas_course_id,
             title: c.title,
             course_code: c.course_code,
             block_id: block.id,
-          }, { onConflict: 'block_id,canvas_course_id' });
+          }, { onConflict: 'block_id,canvas_course_id' }).select('id, canvas_course_id').maybeSingle();
+
+          if (upsertedCourse?.id && c.canvas_course_id) {
+            courseIdMap[c.canvas_course_id] = upsertedCourse.id;
+            c.id = upsertedCourse.id;
+          }
         }
 
         for (const a of assignmentsList) {
+          const matchingCourse = courses.find((c) => c.canvas_course_id === a.canvas_assignment_id || c.id === a.course_id || (c.canvas_course_id && a.course_id?.includes(c.canvas_course_id)));
+          const validCourseUuid = matchingCourse?.id && !matchingCourse.id.startsWith('crs_') ? matchingCourse.id : (a.course_id && courseIdMap[a.course_id] ? courseIdMap[a.course_id] : null);
+
           await supabase.from('assignments').upsert({
             canvas_assignment_id: a.canvas_assignment_id,
-            course_id: a.course_id,
+            course_id: validCourseUuid,
             block_id: block.id,
             title: a.title,
-            description: a.description,
-            due_at: a.due_at,
+            description: a.description || '',
+            due_at: a.due_at || a.due_date,
             open_at: a.open_at,
             lock_at: a.lock_at,
             canvas_url: a.canvas_url,
-            priority: a.priority,
-            tags: a.tags,
+            priority: a.priority || 'medium',
+            tags: a.tags || [],
           }, { onConflict: 'block_id,canvas_assignment_id' });
         }
       }
