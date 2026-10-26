@@ -7,7 +7,7 @@ import { Users, Plus, Hash } from 'lucide-react';
 interface JoinBlockModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onJoinCode: (code: string) => boolean;
+  onJoinCode: (code: string) => boolean | Promise<boolean>;
   onCreateBlock: (name: string, institution: string) => void;
 }
 
@@ -23,10 +23,10 @@ export const JoinBlockModal: React.FC<JoinBlockModalProps> = ({
   const [institution, setInstitution] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const handleJoin = (e: React.FormEvent) => {
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const success = onJoinCode(code);
+    const success = await onJoinCode(code);
     if (success) {
       setCode('');
       onClose();

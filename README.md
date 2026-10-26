@@ -1,114 +1,76 @@
 # BlockSync ⚡
-> **Lightweight, intuitive collaborative assignment tracking platform for college student cohorts.**
+> **Collaborative assignment tracking, Canvas LMS sync, and peer study network for academic cohorts.**
 
-Built with a **100% free & open-source tech stack** (React 18, Vite, TypeScript, Tailwind CSS, Lucide Icons, and Supabase free tier / local storage sync).
-
----
-
-## 🌟 Core Features (MVP Scope)
-
-1. **Academic Block Grouping & Auth**:
-   - Students join their cohort with a clean shortcode (e.g. `CS2A-SYNC`).
-   - Create new academic blocks and assign Block Representatives.
-   - One-click demo persona switcher (Alex Rivera, Sarah Chen, Marcus Vance) for effortless team testing.
-
-2. **Dashboard & UI/UX Principles**:
-   - **Current Priority Hero**: Prominent gradient card displaying the single most urgent upcoming task, countdown badge (`Due in 18 hours`), peer completion faces, and quick "Mark as Done" action.
-   - **Quick Search Bar**: Instant real-time filter across assignments, course codes, study materials, or classmates (`Press /` shortcut).
-   - **Non-Intrusive Online Indicator**: Minimal presence dots showing live cohort members and what task they are currently focusing on without visual clutter.
-   - **Daily Block Activity Feed**: Live audit stream of peer completions, uploaded reviewers, and advice inquiries over the past 24 hours.
-
-3. **Shared Assignment Board & Micro-Cards**:
-   - Clean micro-cards with course code tags, urgency indicators, and completed classmate avatars.
-   - Interactive modal/drawer with full requirements, guidelines, and tag metadata.
-   - Confetti celebration upon marking assignments done.
-
-4. **Peer Completion & Peer Advice Hub**:
-   - View which classmates in the block have completed the task.
-   - Dedicated **"Ask for Advice"** action on finished peers: sends direct questions, prompts, and study hints.
-   - Mentorship drawer for viewing and replying to advice threads.
-
-5. **Block Resource Hub**:
-   - Centralized aggregation of all uploaded reviewers, cheat sheets, past exam slides, and code skeletons.
-   - Drag-and-drop file upload for PDFs and study notes linked to assignments.
+Built with a **100% free & open-source stack**: React 18, Vite, TypeScript, Tailwind CSS, Lucide Icons, and Supabase (PostgreSQL, Auth, Storage, and Realtime).
 
 ---
 
-## 🚀 Quick Start (Zero-Cost Setup)
+## 🌟 Core Features & Enhancements
 
-### 1. Install & Run Locally
+### 1. Authentication & Cohort/Block Syncing
+- **Real Supabase Auth Sessions**: Replaces mock states with live Supabase authentication (email/password sign-in and sign-up with instant demo student profiles).
+- **Academic Block Binding**: Classmates join or create their academic cohort (e.g. `CS-2A`) with unique shortcodes (e.g. `CS2A-SYNC`).
+- **Live Peer Visibility**: Real-time presence indicators track active block members and their current assignment focus without screen clutter.
+
+### 2. Canvas LMS Live Assignment Sync
+- **Automated Sync Engine**: Imports active courses and deadlines directly from Canvas LMS (`/api/v1/courses`, `/api/v1/courses/:id/assignments`).
+- **Non-Destructive Synchronization**: Uses an upsert strategy on `canvas_assignment_id` to ensure student completions and community-attached materials are never wiped when Canvas updates.
+- **Assignment Timestamps & Deep-Links**: Tracks `open_at`, `due_at`, `lock_at`, and direct deep-links to Canvas.
+- **Grouped by Course View**: Seamlessly toggle between priority grid and course-grouped layouts.
+
+### 3. Community-Rated Hybrid Study Hub
+- **Files & External Links**: Supports direct file uploads (PDFs, cheat sheets, code) stored in Supabase Storage (`study_materials` bucket) as well as external links (Google Drive, Notion, Gemini Notebook, GitHub).
+- **5-Star Community Rating System**: Block members rate shared resources (1–5 stars). Resources display average ratings, vote counts, and can be sorted by highest rated or newest.
+
+### 4. Real-Time Messaging & Collaboration Engine
+- **Contextual P2P Advice Threads**: Triggered by clicking **"Ask for Advice"** on any classmate who marked an assignment as completed. Automatically opens a direct 1-on-1 thread linked to that task.
+- **Group Channels**: Built-in block-wide cohort and course channels.
+- **Supabase Realtime**: Instant message delivery powered by `postgres_changes`.
+
+---
+
+## 🗄️ Supabase Database Migration (v2)
+
+To deploy the enhanced schema to your Supabase project:
+
+1. Open your [Supabase Dashboard](https://supabase.com/dashboard).
+2. Navigate to the **SQL Editor**.
+3. Paste and execute [`supabase/schema.sql`](./supabase/schema.sql).
+
+### Key Tables & Policies
+- `blocks`: Academic cohort sections with join codes and Canvas settings.
+- `profiles`: Authenticated student accounts linked to cohorts.
+- `courses`: Courses synced from Canvas or created per block.
+- `assignments`: Synced deadlines with lock dates and Canvas links.
+- `completions`: Student completions and ratings with uniqueness constraints.
+- `resources`: Mixed materials (Files + Links) categorized by type.
+- `resource_ratings`: 5-star community ratings with unique constraints per user/resource.
+- `conversations` & `conversation_members`: P2P advice threads and group channels.
+- `messages`: Real-time messages linked to conversations and assignments.
+- `study_materials`: Storage bucket for files.
+- Non-recursive RLS policies for maximum performance.
+
+---
+
+## 🚀 Local Development & Deployment
+
+### Quick Start
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Start Vite fast development server
+# 2. Start Vite dev server
 npm run dev
 ```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-> [!NOTE]
-> BlockSync includes an **automatic local storage demo fallback**. You can run and test all features immediately without configuring external cloud services!
-
----
-
-## 🗄️ Database & Supabase Free-Tier Setup
-
-When you are ready to connect to a free-tier Supabase project:
-
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Go to the **SQL Editor** tab in your Supabase dashboard.
-3. Paste and execute the contents of [`supabase/schema.sql`](./supabase/schema.sql).
-4. Copy your project URL and Anon Public Key into a `.env` file:
-   ```env
-   VITE_SUPABASE_URL=https://your-project.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-   ```
-5. Restart your dev server (`npm run dev`).
-
-### Database Architecture
-- `blocks`: Academic cohort sections with join codes and institutions.
-- `profiles`: User information, roles (`student`, `rep`), and block association.
-- `assignments`: Block tasks, due dates, course codes, and urgency priority levels.
-- `completions`: Student task completions and ratings.
-- `resources`: Uploaded PDFs, cheat sheets, lecture slides, and notes.
-- `peer_presence`: Live online status, heartbeat, and current task focus.
-- `advice_threads`: Direct Q&A threads linked to assignments.
-- `activity_logs`: Cohort activity stream.
-
----
-
-## 📁 File Structure (< 150 Lines Per File)
-
-```plaintext
-├── src/
-│   ├── components/
-│   │   ├── ui/               # Low-level visual elements (Button, Input, Avatar, Badge, Modal)
-│   │   ├── dashboard/        # PriorityHero, QuickSearchBar, DailyOverviewFeed, SetFocusModal
-│   │   ├── assignments/      # AssignmentCard, AssignmentList, AssignmentDrawer, FileDropzone, CreateAssignmentModal
-│   │   ├── social/           # OnlinePresenceBar, AskAdviceModal, AdviceDrawer
-│   │   ├── resources/        # ResourceHub
-│   │   └── layout/           # Navbar, JoinBlockModal
-│   ├── lib/                  # Supabase client, mockData, date & UI utilities
-│   ├── hooks/                # useAuth, useAssignments, useResources, usePresence, useAdvice
-│   ├── types/                # TypeScript interfaces and unions
-│   ├── App.tsx               # Main layout and view router
-│   └── main.tsx              # Application entrypoint
-├── supabase/
-│   └── schema.sql            # PostgreSQL RLS & Schema
-├── tailwind.config.js
-└── package.json
+### Environment Configuration (`.env`)
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
----
-
-## ☁️ Zero-Cost Production Deployment
-
-Build the static production bundle:
+### Production Build & Netlify
 ```bash
 npm run build
 ```
-Deploy the generated `dist/` directory directly to:
-- **Vercel** (`vercel --prod`)
-- **Cloudflare Pages** (`npx wrangler pages deploy dist`)
-- **Netlify** (`netlify deploy --prod --dir=dist`)
-- **Firebase Hosting** (`firebase deploy --only hosting`)
+The output is written to `dist/`, ready for zero-downtime deployment on Netlify or Vercel.

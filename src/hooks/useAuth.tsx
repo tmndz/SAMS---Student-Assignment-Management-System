@@ -1,112 +1,124 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { UserProfile, Block } from '@/types';
 import { INITIAL_USER, INITIAL_BLOCK } from '@/lib/mockData';
+import { fetchProfile, upsertProfile, fetchBlockById, fetchBlockByCode, insertBlock } from '@/lib/authHelpers';
 
 interface AuthContextType {
   user: UserProfile;
   block: Block;
-  allBlocks: Block[];
-  switchUser: (profile: Partial<UserProfile>) => void;
-  switchBlock: (blockId: string) => void;
-  joinBlockByCode: (code: string) => boolean;
-  createBlock: (name: string, institution: string) => Block;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  signInWithEmail: (email: string, pass: string) => Promise<{ error?: string }>;
+  signUpWithEmail: (email: string, pass: string, name: string) => Promise<{ error?: string }>;
+  signOut: () => Promise<void>;
+  joinBlockByCode: (code: string) => Promise<boolean>;
+  createBlock: (name: string, institution: string, canvasDomain?: string, canvasToken?: string) => Promise<Block>;
+  updateBlockCanvasCredentials: (domain: string, token: string) => Promise<void>;
 }
-
-const STORAGE_KEY_USER = 'blocksync_user';
-const STORAGE_KEY_BLOCK = 'blocksync_block';
-
-const DEMO_BLOCKS: Block[] = [
-  INITIAL_BLOCK,
-  {
-    id: 'blk_cs3b',
-    name: 'CS-3B',
-    join_code: 'CS3B-PROG',
-    institution: 'Faculty of Computing & Information',
-    description: 'Junior Year - Distributed Systems Cohort B',
-    student_count: 28,
-    created_at: new Date(Date.now() - 90 * 86400000).toISOString(),
-  },
-];
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_USER);
-    return saved ? JSON.parse(saved) : INITIAL_USER;
+    const s = localStorage.getItem('blocksync_user');
+    return s ? JSON.parse(s) : INITIAL_USER;
   });
-
-  const [blocks, setBlocks] = useState<Block[]>(() => {
-    const saved = localStorage.getItem('blocksync_blocks_list');
-    return saved ? JSON.parse(saved) : DEMO_BLOCKS;
-  });
-
   const [block, setBlock] = useState<Block>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_BLOCK);
-    return saved ? JSON.parse(saved) : INITIAL_BLOCK;
+    const s = localStorage.getItem('blocksync_block');
+    return s ? JSON.parse(s) : INITIAL_BLOCK;
   });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
-  }, [user]);
+    if (!isSupabaseConfigured) { setIsLoading(false); return; }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) { setIsAuthenticated(true); syncUserSession(session.user); }
+      else setIsLoading(false);
+    });
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_BLOCK, JSON.stringify(block));
-  }, [block]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (session?.user) { setIsAuthenticated(true); syncUserSession(session.user); }
+      else setIsAuthenticated(false);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('blocksync_blocks_list', JSON.stringify(blocks));
-  }, [blocks]);
-
-  const switchUser = (newProfile: Partial<UserProfile>) => {
-    setUser((prev) => ({ ...prev, ...newProfile }));
+  const syncUserSession = async (authUser: any) => {
+    try {
+      let p = await fetchProfile(authUser.id);
+      if (!p) p = await upsertProfile({ id: authUser.id, email: authUser.email || '', full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] });
+      setUser(p);
+      localStorage.setItem('blocksync_user', JSON.stringify(p));
+      if (p.block_id) {
+        const blk = await fetchBlockById(p.block_id);
+        if (blk) { setBlock(blk); localStorage.setItem('blocksync_block', JSON.stringify(blk)); }
+      }
+    } finally { setIsLoading(false); }
   };
 
-  const switchBlock = (blockId: string) => {
-    const target = blocks.find((b) => b.id === blockId);
-    if (target) {
-      setBlock(target);
-      setUser((prev) => ({ ...prev, block_id: target.id }));
-    }
+  const signInWithEmail = async (email: string, pass: string) => {
+    if (!isSupabaseConfigured) return { error: 'Supabase not configured' };
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    return { error: error?.message };
   };
 
-  const joinBlockByCode = (code: string): boolean => {
-    const trimmed = code.trim().toUpperCase();
-    const found = blocks.find((b) => b.join_code.toUpperCase() === trimmed);
-    if (found) {
-      switchBlock(found.id);
-      return true;
-    }
-    return false;
+  const signUpWithEmail = async (email: string, pass: string, name: string) => {
+    if (!isSupabaseConfigured) return { error: 'Supabase not configured' };
+    const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
+    if (error) return { error: error.message };
+    if (data.user) await upsertProfile({ id: data.user.id, email, full_name: name });
+    return {};
   };
 
-  const createBlock = (name: string, institution: string): Block => {
-    const newBlock: Block = {
+  const signOut = async () => {
+    if (isSupabaseConfigured) await supabase.auth.signOut();
+    setIsAuthenticated(false);
+  };
+
+  const joinBlockByCode = async (code: string): Promise<boolean> => {
+    const targetBlock = await fetchBlockByCode(code);
+    if (!targetBlock) return false;
+    setBlock(targetBlock);
+    const updatedUser = { ...user, block_id: targetBlock.id };
+    setUser(updatedUser);
+    localStorage.setItem('blocksync_block', JSON.stringify(targetBlock));
+    localStorage.setItem('blocksync_user', JSON.stringify(updatedUser));
+    if (isSupabaseConfigured && isAuthenticated) await supabase.from('profiles').update({ block_id: targetBlock.id }).eq('id', user.id);
+    return true;
+  };
+
+  const createBlock = async (name: string, institution: string, canvasDomain?: string, canvasToken?: string): Promise<Block> => {
+    let newBlock: Block = {
       id: `blk_${Date.now()}`,
       name: name.trim().toUpperCase(),
       join_code: `${name.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
       institution,
+      canvas_domain: canvasDomain,
+      canvas_token: canvasToken,
       student_count: 1,
       created_at: new Date().toISOString(),
     };
-    setBlocks((prev) => [newBlock, ...prev]);
+    newBlock = await insertBlock(newBlock);
     setBlock(newBlock);
-    setUser((prev) => ({ ...prev, block_id: newBlock.id, role: 'rep' }));
+    const updatedUser: UserProfile = { ...user, block_id: newBlock.id, role: 'rep' };
+    setUser(updatedUser);
+    localStorage.setItem('blocksync_block', JSON.stringify(newBlock));
+    localStorage.setItem('blocksync_user', JSON.stringify(updatedUser));
+    if (isSupabaseConfigured && isAuthenticated) await supabase.from('profiles').update({ block_id: newBlock.id, role: 'rep' }).eq('id', user.id);
     return newBlock;
   };
 
+  const updateBlockCanvasCredentials = async (domain: string, token: string) => {
+    const updated = { ...block, canvas_domain: domain, canvas_token: token };
+    setBlock(updated);
+    localStorage.setItem('blocksync_block', JSON.stringify(updated));
+    if (isSupabaseConfigured && block.id) await supabase.from('blocks').update({ canvas_domain: domain, canvas_token: token }).eq('id', block.id);
+  };
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        block,
-        allBlocks: blocks,
-        switchUser,
-        switchBlock,
-        joinBlockByCode,
-        createBlock,
-      }}
-    >
+    <AuthContext.Provider value={{ user, block, isAuthenticated, isLoading, signInWithEmail, signUpWithEmail, signOut, joinBlockByCode, createBlock, updateBlockCanvasCredentials }}>
       {children}
     </AuthContext.Provider>
   );

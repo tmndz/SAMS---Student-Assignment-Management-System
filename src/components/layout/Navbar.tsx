@@ -1,16 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import {
-  Layers,
-  Plus,
-  MessageSquare,
-  Users,
-  Copy,
-  Check,
-  ChevronDown,
-  Sparkles,
+  Layers, Plus, MessageSquare, Copy, Check, RefreshCw, LogIn, LogOut, ChevronDown, Sparkles
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -18,8 +11,10 @@ interface NavbarProps {
   onSelectTab: (tab: 'dashboard' | 'assignments' | 'resources') => void;
   onOpenNewAssignment: () => void;
   onOpenJoinBlock: () => void;
-  onOpenAdviceInbox: () => void;
-  adviceCount: number;
+  onOpenChat: () => void;
+  onOpenCanvasSync: () => void;
+  onOpenAuth: () => void;
+  unreadCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -27,11 +22,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   onOpenNewAssignment,
   onOpenJoinBlock,
-  onOpenAdviceInbox,
-  adviceCount,
+  onOpenChat,
+  onOpenCanvasSync,
+  onOpenAuth,
+  unreadCount = 0,
 }) => {
-  const { user, block, allBlocks, switchBlock, switchUser } = useAuth();
-  const [copied, setCopied] = React.useState(false);
+  const { user, block, isAuthenticated, signOut } = useAuth();
+  const [copied, setCopied] = useState(false);
 
   const copyCode = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -40,16 +37,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const demoUsers = [
-    { name: 'Alex Rivera (You)', role: 'student' as const, avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80' },
-    { name: 'Sarah Chen (Rep)', role: 'rep' as const, avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
-    { name: 'Marcus Vance', role: 'student' as const, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80' },
-  ];
-
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        {/* Brand & Block Badge */}
+        {/* Brand & Cohort Badge */}
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => onSelectTab('dashboard')}>
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
@@ -80,7 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Center Tabs */}
-        <nav className="hidden md:flex items-center gap-1 p-1 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs font-semibold">
+        <nav className="hidden md:flex items-center gap-1 p-1 rounded-xl bg-slate-900/60 border border-slate-800 text-xs font-semibold">
           {(['dashboard', 'assignments', 'resources'] as const).map((tab) => (
             <button
               key={tab}
@@ -89,51 +80,61 @@ export const Navbar: React.FC<NavbarProps> = ({
                 currentTab === tab ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
               }`}
             >
-              {tab === 'resources' ? 'Reviewer Hub' : tab}
+              {tab === 'resources' ? 'Study Hub' : tab}
             </button>
           ))}
         </nav>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-2.5">
-          <Button size="sm" variant="outline" className="relative" onClick={onOpenAdviceInbox} title="Advice">
+        <div className="flex items-center gap-2">
+          {/* Canvas LMS Sync Trigger */}
+          <Button size="sm" variant="outline" onClick={onOpenCanvasSync} title="Canvas LMS Sync" className="hidden sm:inline-flex">
+            <RefreshCw className="w-3.5 h-3.5 mr-1 text-indigo-400" />
+            <span className="text-xs">Canvas Sync</span>
+          </Button>
+
+          {/* P2P / Channel Chat */}
+          <Button size="sm" variant="outline" className="relative" onClick={onOpenChat} title="Peer Chat & Advice">
             <MessageSquare className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline ml-1 text-xs">Advice</span>
-            {adviceCount > 0 && (
+            <span className="hidden sm:inline ml-1 text-xs">Chat</span>
+            {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[10px] flex items-center justify-center font-bold">
-                {adviceCount}
+                {unreadCount}
               </span>
             )}
           </Button>
 
           <Button size="sm" variant="primary" onClick={onOpenNewAssignment}>
             <Plus className="w-3.5 h-3.5 mr-1" />
-            <span className="hidden sm:inline">New Task</span>
+            <span className="hidden sm:inline">Add Task</span>
           </Button>
 
-          {/* User Persona Toggle */}
-          <div className="relative group">
-            <div className="flex items-center gap-2 p-1 pl-2 rounded-xl bg-slate-900/80 border border-slate-800 cursor-pointer">
-              <span className="text-[11px] font-medium text-slate-300 hidden lg:inline truncate max-w-[90px]">
-                {user.full_name.split(' ')[0]}
-              </span>
-              <Avatar name={user.full_name} src={user.avatar_url} size="xs" status="online" />
-            </div>
-
-            <div className="absolute right-0 top-full mt-2 w-52 p-2 rounded-xl bg-slate-900 border border-slate-800 shadow-2xl hidden group-hover:block animate-in fade-in zoom-in-95">
-              <div className="text-[10px] uppercase font-bold text-slate-400 px-2 py-1">Switch Persona</div>
-              {demoUsers.map((u) => (
+          {/* User Auth Profile */}
+          {isAuthenticated ? (
+            <div className="relative group">
+              <div className="flex items-center gap-2 p-1 pl-2 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer">
+                <span className="text-[11px] font-medium text-slate-300 hidden lg:inline truncate max-w-[80px]">
+                  {user.full_name?.split(' ')[0] || 'User'}
+                </span>
+                <Avatar name={user.full_name || 'U'} src={user.avatar_url} size="xs" status="online" />
+              </div>
+              <div className="absolute right-0 top-full mt-2 w-48 p-2 rounded-xl bg-slate-900 border border-slate-800 shadow-2xl hidden group-hover:block z-50 animate-in fade-in zoom-in-95">
+                <div className="px-2 py-1 text-[11px] text-slate-400 truncate">{user.email}</div>
                 <button
-                  key={u.name}
-                  onClick={() => switchUser({ full_name: u.name, avatar_url: u.avatar, role: u.role })}
-                  className="w-full text-left flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-800 text-xs text-slate-200"
+                  onClick={() => signOut()}
+                  className="w-full text-left flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-800 text-xs text-rose-400"
                 >
-                  <Avatar name={u.name} src={u.avatar} size="xs" />
-                  <span className="truncate">{u.name}</span>
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
                 </button>
-              ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <Button size="sm" variant="secondary" onClick={onOpenAuth}>
+              <LogIn className="w-3.5 h-3.5 mr-1" />
+              <span className="text-xs">Sign In</span>
+            </Button>
+          )}
         </div>
       </div>
     </header>

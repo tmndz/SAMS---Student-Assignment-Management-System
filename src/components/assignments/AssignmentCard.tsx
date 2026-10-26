@@ -19,7 +19,7 @@ export const AssignmentCard: React.FC<AssignmentCardProps> = ({
   onOpenDetails,
   onAskAdvice,
 }) => {
-  const { label: dueLabel, isUrgent, isPastDue } = formatRelativeDeadline(assignment.due_date);
+  const { label: dueLabel, isUrgent, isPastDue } = formatRelativeDeadline(assignment.due_at || assignment.due_date || '');
   const badgeInfo = getPriorityBadge(assignment.priority);
   const completedPeers = assignment.completed_peers || [];
 

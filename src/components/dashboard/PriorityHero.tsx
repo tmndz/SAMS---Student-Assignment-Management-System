@@ -33,7 +33,7 @@ export const PriorityHero: React.FC<PriorityHeroProps> = ({
     );
   }
 
-  const { label: dueLabel, isUrgent } = formatRelativeDeadline(assignment.due_date);
+  const { label: dueLabel, isUrgent } = formatRelativeDeadline(assignment.due_at || assignment.due_date || '');
   const badgeInfo = getPriorityBadge(assignment.priority);
   const completedPeers = assignment.completed_peers || [];
 
