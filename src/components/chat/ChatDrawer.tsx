@@ -3,8 +3,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { Conversation, Message } from '@/types';
-import { MessageSquare, Send, Hash, Users, Sparkles, BookOpen } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { MessageSquare, Send, Hash, Users, Sparkles, Trash2 } from 'lucide-react';
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -14,7 +13,9 @@ interface ChatDrawerProps {
   onSelectConv: (id: string) => void;
   messages: Message[];
   currentUserId: string;
+  canModerate?: boolean;
   onSendMessage: (text: string) => void;
+  onDeleteMessage?: (id: string) => void;
 }
 
 export const ChatDrawer: React.FC<ChatDrawerProps> = ({
@@ -25,7 +26,9 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   onSelectConv,
   messages,
   currentUserId,
+  canModerate = false,
   onSendMessage,
+  onDeleteMessage,
 }) => {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -63,7 +66,9 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             Channels & Threads
           </div>
           {conversations.length === 0 ? (
-            <div className="text-xs text-slate-500 p-2 italic">No active conversations. Click "Ask Advice" on a peer!</div>
+            <div className="text-xs text-slate-500 p-2 italic">
+              No active conversations. Click "Ask Advice" on a peer!
+            </div>
           ) : (
             conversations.map((c) => {
               const isSelected = c.id === activeConvId;
@@ -72,10 +77,16 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                   key={c.id}
                   onClick={() => onSelectConv(c.id)}
                   className={`w-full text-left p-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-                    isSelected ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-900'
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-300 hover:bg-slate-900'
                   }`}
                 >
-                  {c.type === 'GROUP' ? <Hash className="w-3.5 h-3.5 shrink-0" /> : <Users className="w-3.5 h-3.5 shrink-0 text-amber-400" />}
+                  {c.type === 'GROUP' ? (
+                    <Hash className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <Users className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                  )}
                   <span className="truncate">{c.title || 'Advice Thread'}</span>
                 </button>
               );
@@ -106,14 +117,35 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             ) : (
               messages.map((m) => {
                 const isMe = m.sender_id === currentUserId;
+                const canDelete = isMe || canModerate;
                 return (
-                  <div key={m.id} className={`flex gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    key={m.id}
+                    className={`group flex gap-2 items-start ${isMe ? 'justify-end' : 'justify-start'}`}
+                  >
                     {!isMe && <Avatar name={m.sender_name || 'Peer'} src={m.sender_avatar} size="xs" />}
-                    <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
-                      isMe ? 'bg-indigo-600 text-white rounded-br-xs' : 'bg-slate-800 text-slate-100 rounded-bl-xs border border-slate-700/60'
-                    }`}>
-                      {!isMe && <div className="text-[10px] font-bold text-indigo-300 mb-0.5">{m.sender_name}</div>}
+                    <div
+                      className={`relative max-w-[78%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                        isMe
+                          ? 'bg-indigo-600 text-white rounded-br-xs'
+                          : 'bg-slate-800 text-slate-100 rounded-bl-xs border border-slate-700/60'
+                      }`}
+                    >
+                      {!isMe && (
+                        <div className="text-[10px] font-bold text-indigo-300 mb-0.5">
+                          {m.sender_name}
+                        </div>
+                      )}
                       <p>{m.content}</p>
+                      {canDelete && onDeleteMessage && (
+                        <button
+                          onClick={() => onDeleteMessage(m.id)}
+                          title={isMe ? 'Delete your message' : 'Delete message (Moderator)'}
+                          className="opacity-0 group-hover:opacity-100 absolute -top-2 -right-2 p-1 rounded-full bg-slate-900 border border-slate-700 text-slate-400 hover:text-rose-400 transition-opacity shadow-md"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -123,7 +155,10 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           </div>
 
           {/* Input Bar */}
-          <form onSubmit={handleSend} className="p-2.5 border-t border-slate-800 bg-slate-900/40 flex items-center gap-2">
+          <form
+            onSubmit={handleSend}
+            className="p-2.5 border-t border-slate-800 bg-slate-900/40 flex items-center gap-2"
+          >
             <input
               type="text"
               value={inputText}

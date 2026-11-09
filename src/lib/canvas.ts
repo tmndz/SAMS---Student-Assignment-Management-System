@@ -16,7 +16,7 @@ export const SAMPLE_CANVAS_ASSIGNMENTS: CanvasAPIAssignment[] = [
   {
     id: 501,
     name: 'Thread Scheduling & CPU Priority Simulator',
-    description: 'Implement Round Robin and Multilevel Feedback Queue scheduling in C. Submit source and test runs.',
+    description: '<p>Implement <strong>Round Robin</strong> and <strong>Multilevel Feedback Queue</strong> scheduling in C. Submit source and test runs.</p><ul><li>Provide Gantt chart visualizations</li><li>Include CPU utilization metrics</li></ul>',
     due_at: new Date(Date.now() + 36 * 3600000).toISOString(),
     unlock_at: new Date(Date.now() - 48 * 3600000).toISOString(),
     lock_at: new Date(Date.now() + 48 * 3600000).toISOString(),
@@ -26,7 +26,7 @@ export const SAMPLE_CANVAS_ASSIGNMENTS: CanvasAPIAssignment[] = [
   {
     id: 502,
     name: 'Dynamic Programming & Matrix Chain Multiplication',
-    description: 'Optimal parenthesization and Bellman-Ford shortest paths problem set.',
+    description: '<p>Optimal parenthesization and <em>Bellman-Ford</em> shortest paths problem set.</p><ol><li>Solve the matrix chain problem</li><li>Implement Bellman-Ford with negative cycle detection</li></ol>',
     due_at: new Date(Date.now() + 72 * 3600000).toISOString(),
     unlock_at: new Date(Date.now() - 24 * 3600000).toISOString(),
     lock_at: new Date(Date.now() + 84 * 3600000).toISOString(),
@@ -36,7 +36,7 @@ export const SAMPLE_CANVAS_ASSIGNMENTS: CanvasAPIAssignment[] = [
   {
     id: 503,
     name: 'Relational Schema Normalization & BCNF Decomposition',
-    description: 'Derive minimal covers, identify candidate keys, and decompose to BCNF with dependency preservation.',
+    description: '<p>Derive minimal covers, identify candidate keys, and decompose to BCNF with dependency preservation.</p>',
     due_at: new Date(Date.now() + 144 * 3600000).toISOString(),
     unlock_at: new Date(Date.now() - 96 * 3600000).toISOString(),
     lock_at: new Date(Date.now() + 168 * 3600000).toISOString(),
@@ -44,6 +44,50 @@ export const SAMPLE_CANVAS_ASSIGNMENTS: CanvasAPIAssignment[] = [
     course_id: 103,
   },
 ];
+
+// ── Fingerprint for change-detection (prevents unnecessary upserts & duplicates) ──
+export function assignmentFingerprint(a: CanvasAPIAssignment): string {
+  const raw = `${a.id}|${a.due_at ?? ''}|${a.name}|${a.lock_at ?? ''}`;
+  let hash = 5381;
+  for (let i = 0; i < raw.length; i++) {
+    hash = ((hash << 5) + hash) ^ raw.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+// ── HTML sanitiser (preserve structure, strip dangerous scripts/events) ─────────
+export function sanitizeCanvasHtml(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/on\w+="[^"]*"/gi, '')
+    .replace(/on\w+='[^']*'/gi, '');
+}
+
+export function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/h[1-6]>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// ── Heuristic priority scoring (replaces static 'high' default) ─────────────
+export function scoreAssignmentPriority(a: CanvasAPIAssignment): Assignment['priority'] {
+  const hoursUntilDue = (Date.parse(a.due_at ?? '') - Date.now()) / 3600000;
+  if (isNaN(hoursUntilDue) || hoursUntilDue < 0) return 'urgent';
+  if (hoursUntilDue < 24) return 'urgent';
+  if (hoursUntilDue < 72) return 'high';
+  if (hoursUntilDue < 168) return 'medium';
+  return 'low';
+}
 
 async function fetchCanvasAPI(domain: string, pathAndQuery: string, token: string): Promise<any> {
   const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -78,18 +122,13 @@ async function fetchCanvasAPI(domain: string, pathAndQuery: string, token: strin
     if (res.ok) return await res.json();
   } catch {}
 
-  // Do NOT perform raw direct browser fetch to avoid CORS preflight errors
   return null;
 }
 
 export async function fetchCanvasCourses(domain: string, token: string): Promise<CanvasAPICourse[]> {
   const data = await fetchCanvasAPI(domain, 'api/v1/courses?enrollment_state=active&per_page=50', token);
-  if (Array.isArray(data) && data.length > 0) {
-    return data;
-  }
-  if (Array.isArray(data)) {
-    return data;
-  }
+  if (Array.isArray(data) && data.length > 0) return data;
+  if (Array.isArray(data)) return data;
   return SAMPLE_CANVAS_COURSES;
 }
 
@@ -99,9 +138,7 @@ export async function fetchCanvasAssignments(
   courseId: number
 ): Promise<CanvasAPIAssignment[]> {
   const data = await fetchCanvasAPI(domain, `api/v1/courses/${courseId}/assignments?per_page=50`, token);
-  if (Array.isArray(data)) {
-    return data;
-  }
+  if (Array.isArray(data)) return data;
   return SAMPLE_CANVAS_ASSIGNMENTS.filter((a) => a.course_id === courseId);
 }
 
@@ -121,6 +158,10 @@ export function transformCanvasAssignment(
   blockId: string
 ): Assignment {
   const due = a.due_at || new Date(Date.now() + 7 * 86400000).toISOString();
+  const rawHtml = a.description || '';
+  const cleanHtml = sanitizeCanvasHtml(rawHtml);
+  const plainText = rawHtml ? htmlToPlainText(rawHtml) : 'Imported from Canvas LMS';
+
   return {
     id: `asg_canvas_${a.id}`,
     canvas_assignment_id: String(a.id),
@@ -129,18 +170,21 @@ export function transformCanvasAssignment(
     title: a.name,
     course_code: course.course_code,
     course_name: course.title,
-    description: a.description ? a.description.replace(/<[^>]*>?/gm, '') : 'Imported from Canvas LMS',
+    description: plainText,
+    description_html: cleanHtml,
     due_at: due,
     due_date: due,
     open_at: a.unlock_at,
     lock_at: a.lock_at,
     canvas_url: a.html_url,
-    priority: 'high',
+    priority: scoreAssignmentPriority(a),
     tags: [course.course_code, 'Canvas Sync'],
     created_at: new Date().toISOString(),
     is_completed: false,
     completed_by_count: 0,
-    resources_count: 0,
     completed_peers: [],
+    sync_hash: assignmentFingerprint(a),
+    sync_source: 'canvas',
+    last_synced_at: new Date().toISOString(),
   };
 }

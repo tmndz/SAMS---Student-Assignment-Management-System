@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { UserProfile, Block } from '@/types';
+import { UserProfile, Block, canModerate, isRep } from '@/types';
 import { fetchProfile, upsertProfile, fetchBlockById, fetchBlockByCode, insertBlock } from '@/lib/authHelpers';
+import { updateProfileFields, getProfileWithAvatar } from '@/lib/profileHelpers';
 import { generateUUID } from '@/lib/utils';
 
 interface AuthContextType {
@@ -9,12 +10,16 @@ interface AuthContextType {
   block: Block | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  canModerate: boolean;
+  isRep: boolean;
   signInWithEmail: (email: string, pass: string) => Promise<{ error?: string }>;
   signUpWithEmail: (email: string, pass: string, name: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   joinBlockByCode: (code: string) => Promise<boolean>;
   createBlock: (name: string, institution: string, canvasDomain?: string, canvasToken?: string) => Promise<Block>;
   updateBlockCanvasCredentials: (domain: string, token: string) => Promise<void>;
+  updateProfile: (updates: Parameters<typeof updateProfileFields>[1]) => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,6 +29,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [block, setBlock] = useState<Block | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Derived role guards — instant without extra DB calls
+  const userCanModerate = useMemo(() => canModerate(user), [user?.role]);
+  const userIsRep = useMemo(() => isRep(user), [user?.role]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -40,7 +49,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setIsAuthenticated(true);
         syncUserSession(session.user);
@@ -57,7 +68,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const syncUserSession = async (authUser: any) => {
     try {
-      let p = await fetchProfile(authUser.id);
+      let p = await getProfileWithAvatar(authUser.id);
+      if (!p) {
+        p = await fetchProfile(authUser.id);
+      }
       if (!p) {
         p = await upsertProfile({
           id: authUser.id,
@@ -76,6 +90,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const refreshUser = async () => {
+    if (!user) return;
+    const p = await getProfileWithAvatar(user.id);
+    if (p) setUser(p);
   };
 
   const signInWithEmail = async (email: string, pass: string) => {
@@ -118,7 +138,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
-  const createBlock = async (name: string, institution: string, canvasDomain?: string, canvasToken?: string): Promise<Block> => {
+  const createBlock = async (
+    name: string,
+    institution: string,
+    canvasDomain?: string,
+    canvasToken?: string
+  ): Promise<Block> => {
     const prefix = name.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 5) || 'BLOCK';
     let newBlock: Block = {
       id: generateUUID(),
@@ -151,12 +176,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateProfile = async (updates: Parameters<typeof updateProfileFields>[1]) => {
+    if (!user) return;
+    await updateProfileFields(user.id, updates);
+    setUser((prev) => (prev ? { ...prev, ...updates } : prev));
+  };
+
   return (
-    <AuthContext.Provider value={{
-      user, block, isAuthenticated, isLoading,
-      signInWithEmail, signUpWithEmail, signOut,
-      joinBlockByCode, createBlock, updateBlockCanvasCredentials
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        block,
+        isAuthenticated,
+        isLoading,
+        canModerate: userCanModerate,
+        isRep: userIsRep,
+        signInWithEmail,
+        signUpWithEmail,
+        signOut,
+        joinBlockByCode,
+        createBlock,
+        updateBlockCanvasCredentials,
+        updateProfile,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

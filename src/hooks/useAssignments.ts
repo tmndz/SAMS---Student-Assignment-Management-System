@@ -6,7 +6,7 @@ import { useAuth } from './useAuth';
 import { generateUUID } from '@/lib/utils';
 
 export function useAssignments() {
-  const { user, block } = useAuth();
+  const { user, block, canModerate } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -24,8 +24,14 @@ export function useAssignments() {
         const { data: crsData } = await supabase.from('courses').select('*').eq('block_id', block.id);
         if (crsData) setCourses(crsData as Course[]);
 
-        const { data: asgData } = await supabase.from('assignments').select('*').eq('block_id', block.id).order('due_at', { ascending: true });
-        const { data: cmpData } = await supabase.from('completions').select('*, profile:profiles(id, full_name, avatar_url)');
+        const { data: asgData } = await supabase
+          .from('assignments')
+          .select('*')
+          .eq('block_id', block.id)
+          .order('due_at', { ascending: true });
+        const { data: cmpData } = await supabase
+          .from('completions')
+          .select('*, profile:profiles(id, full_name, avatar_url)');
 
         if (asgData) {
           const enriched: Assignment[] = asgData.map((a: any) => {
@@ -67,7 +73,7 @@ export function useAssignments() {
     loadData();
     if (!isSupabaseConfigured || !block?.id) return;
 
-    // Real-time synchronization: when any peer adds a task or marks done, all classmates update!
+    // Real-time synchronization
     const channel = supabase
       .channel(`realtime_cohort_${block.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, () => loadData())
@@ -84,7 +90,10 @@ export function useAssignments() {
   const priorityHero = useMemo(() => {
     const pending = assignments.filter((a) => !a.is_completed);
     if (!pending.length) return null;
-    return [...pending].sort((a, b) => new Date(a.due_at || a.due_date || '').getTime() - new Date(b.due_at || b.due_date || '').getTime())[0];
+    return [...pending].sort(
+      (a, b) =>
+        new Date(a.due_at || a.due_date || '').getTime() - new Date(b.due_at || b.due_date || '').getTime()
+    )[0];
   }, [assignments]);
 
   const toggleCompletion = async (assignmentId: string) => {
@@ -95,7 +104,12 @@ export function useAssignments() {
 
     if (willBeCompleted) {
       try {
-        confetti({ particleCount: 65, spread: 60, origin: { y: 0.7 }, colors: ['#6366f1', '#a855f7', '#3b82f6', '#10b981'] });
+        confetti({
+          particleCount: 65,
+          spread: 60,
+          origin: { y: 0.7 },
+          colors: ['#6366f1', '#a855f7', '#3b82f6', '#10b981'],
+        });
       } catch {}
     }
 
@@ -105,16 +119,33 @@ export function useAssignments() {
         if (asg.id !== assignmentId) return asg;
         const peers = asg.completed_peers || [];
         const updatedPeers = willBeCompleted
-          ? [{ id: `cmp_${Date.now()}`, assignment_id: asg.id, user_id: user.id, user_name: `${user.full_name} (You)`, user_avatar: user.avatar_url, completed_at: new Date().toISOString() }, ...peers]
+          ? [
+              {
+                id: `cmp_${Date.now()}`,
+                assignment_id: asg.id,
+                user_id: user.id,
+                user_name: `${user.full_name} (You)`,
+                user_avatar: user.avatar_url,
+                completed_at: new Date().toISOString(),
+              },
+              ...peers,
+            ]
           : peers.filter((p) => p.user_id !== user.id);
-        return { ...asg, is_completed: willBeCompleted, completed_by_count: updatedPeers.length, completed_peers: updatedPeers };
+        return {
+          ...asg,
+          is_completed: willBeCompleted,
+          completed_by_count: updatedPeers.length,
+          completed_peers: updatedPeers,
+        };
       })
     );
 
     if (isSupabaseConfigured) {
       try {
         if (willBeCompleted) {
-          await supabase.from('completions').upsert({ assignment_id: assignmentId, user_id: user.id, completed_at: new Date().toISOString() });
+          await supabase
+            .from('completions')
+            .upsert({ assignment_id: assignmentId, user_id: user.id, completed_at: new Date().toISOString() });
         } else {
           await supabase.from('completions').delete().match({ assignment_id: assignmentId, user_id: user.id });
         }
@@ -125,7 +156,13 @@ export function useAssignments() {
   };
 
   const createAssignment = async (data: {
-    title: string; course_code: string; course_name: string; description: string; due_date: string; priority: PriorityLevel; tags: string[];
+    title: string;
+    course_code: string;
+    course_name: string;
+    description: string;
+    due_date: string;
+    priority: PriorityLevel;
+    tags: string[];
   }) => {
     if (!block || !user) return null;
     const asgId = generateUUID();
@@ -151,19 +188,50 @@ export function useAssignments() {
     setAssignments((prev) => [newAsg, ...prev]);
 
     if (isSupabaseConfigured) {
-      await supabase.from('assignments').insert([{
-        id: asgId,
-        block_id: block.id,
-        title: newAsg.title,
-        description: newAsg.description,
-        due_at: newAsg.due_at,
-        priority: newAsg.priority,
-        tags: newAsg.tags,
-        created_by: user.id,
-      }]);
+      await supabase.from('assignments').insert([
+        {
+          id: asgId,
+          block_id: block.id,
+          title: newAsg.title,
+          description: newAsg.description,
+          due_at: newAsg.due_at,
+          priority: newAsg.priority,
+          tags: newAsg.tags,
+          created_by: user.id,
+        },
+      ]);
     }
     return newAsg;
   };
 
-  return { assignments, courses, priorityHero, toggleCompletion, createAssignment, refreshAssignments: loadData, isLoading };
+  // RBAC deletion: Creator or Block Assistant / Rep can delete
+  const deleteAssignment = async (assignmentId: string): Promise<boolean> => {
+    const target = assignments.find((a) => a.id === assignmentId);
+    if (!target || !user) return false;
+    const isOwner = target.created_by === user.id;
+    if (!isOwner && !canModerate) return false;
+
+    setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('assignments').delete().eq('id', assignmentId);
+      } catch (err) {
+        console.warn('Error deleting assignment:', err);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  return {
+    assignments,
+    courses,
+    priorityHero,
+    toggleCompletion,
+    createAssignment,
+    deleteAssignment,
+    refreshAssignments: loadData,
+    isLoading,
+  };
 }

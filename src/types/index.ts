@@ -1,17 +1,54 @@
 export type PriorityLevel = 'low' | 'medium' | 'high' | 'urgent';
 export type ResourceType = 'FILE' | 'LINK';
 export type ConversationType = 'DIRECT' | 'GROUP';
+export type UserRole = 'student' | 'block_assistant' | 'rep';
+export type NavigationTab = 'dashboard' | 'assignments' | 'resources' | 'classmates';
+
+export interface NotificationPrefs {
+  deadline_24h: boolean;
+  deadline_1h: boolean;
+  motivational: boolean;
+  peer_completed: boolean;
+  new_assignment: boolean;
+}
 
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
+  display_name?: string;
   avatar_url?: string;
+  avatar_file_path?: string;
+  bio?: string;
+  year_level?: '1st' | '2nd' | '3rd' | '4th' | '5th' | 'grad';
+  major?: string;
   block_id: string | null;
-  role: 'student' | 'rep';
+  role: UserRole;
   canvas_token?: string;
+  notification_prefs?: NotificationPrefs;
   created_at?: string;
+  updated_at?: string;
 }
+
+// Permission guards — avoids scattered role string checks throughout components
+export function canModerate(user: UserProfile | null): boolean {
+  return user?.role === 'block_assistant' || user?.role === 'rep';
+}
+export function isRep(user: UserProfile | null): boolean {
+  return user?.role === 'rep';
+}
+export function displayName(user: UserProfile | null): string {
+  if (!user) return 'Unknown';
+  return user.display_name || user.full_name || user.email.split('@')[0];
+}
+
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  deadline_24h: true,
+  deadline_1h: true,
+  motivational: true,
+  peer_completed: false,
+  new_assignment: true,
+};
 
 export interface Block {
   id: string;
@@ -43,6 +80,7 @@ export interface Assignment {
   course_code?: string;
   course_name?: string;
   description: string;
+  description_html?: string;
   due_at?: string;
   due_date?: string;
   open_at?: string | null;
@@ -57,6 +95,9 @@ export interface Assignment {
   completed_by_count?: number;
   resources_count?: number;
   completed_peers?: PeerCompletion[];
+  sync_hash?: string;
+  sync_source?: 'manual' | 'canvas';
+  last_synced_at?: string;
 }
 
 export interface PeerCompletion {
@@ -96,7 +137,7 @@ export interface ResourceRating {
   id?: string;
   resource_id: string;
   user_id: string;
-  rating: number; // 1 to 5
+  rating: number;
 }
 
 export interface Conversation {
@@ -157,6 +198,20 @@ export interface ActivityFeedItem {
   target_id: string;
   timestamp: string;
   badge_text?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  block_id?: string;
+  assignment_id?: string;
+  type: 'deadline_24h' | 'deadline_1h' | 'deadline_missed' | 'new_assignment' |
+        'resource_uploaded' | 'peer_completed' | 'motivational' | 'canvas_sync_update';
+  title: string;
+  body: string;
+  is_read: boolean;
+  delivered_at?: string;
+  created_at: string;
 }
 
 export interface CanvasAPICourse {

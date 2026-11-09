@@ -4,7 +4,9 @@ import { useAssignments } from '@/hooks/useAssignments';
 import { useResources } from '@/hooks/useResources';
 import { usePresence } from '@/hooks/usePresence';
 import { useMessaging } from '@/hooks/useMessaging';
-import { Assignment, ActivityFeedItem } from '@/types';
+import { useNotifications } from '@/hooks/useNotifications';
+import { useClassmates } from '@/hooks/useClassmates';
+import { Assignment, ActivityFeedItem, NavigationTab, UserProfile } from '@/types';
 
 // Layout & Cohort Views
 import { LandingPage } from '@/components/layout/LandingPage';
@@ -24,17 +26,35 @@ import { AssignmentList } from '@/components/assignments/AssignmentList';
 import { AssignmentDrawer } from '@/components/assignments/AssignmentDrawer';
 import { CreateAssignmentModal } from '@/components/assignments/CreateAssignmentModal';
 import { ResourceHub } from '@/components/resources/ResourceHub';
+import { ProfileModal } from '@/components/profile/ProfileModal';
+import { ClassmatesView } from '@/components/classmates/ClassmatesView';
 import { Layers } from 'lucide-react';
 
 export function App() {
-  const { user, block, isAuthenticated, isLoading, joinBlockByCode, createBlock, signOut } = useAuth();
-  const { assignments, priorityHero, toggleCompletion, createAssignment, refreshAssignments } = useAssignments();
-  const { resources, rateResource, uploadFile, addLink } = useResources();
+  const { user, block, isAuthenticated, isLoading, canModerate, isRep, joinBlockByCode, createBlock, signOut } = useAuth();
+  const { assignments, priorityHero, toggleCompletion, createAssignment, deleteAssignment, refreshAssignments } = useAssignments();
+  const { resources, rateResource, uploadFile, addLink, deleteResource } = useResources();
   const { peers, myFocusTaskId, myFocusTaskTitle, updateMyFocus } = usePresence();
-  const { conversations, activeConversationId, setActiveConversationId, messages, sendMessage, getOrCreateDirectConversation } = useMessaging();
+  const { classmates, updateMemberRole } = useClassmates();
+  const {
+    conversations,
+    activeConversationId,
+    setActiveConversationId,
+    messages,
+    sendMessage,
+    deleteMessage,
+    getOrCreateDirectConversation,
+  } = useMessaging();
+  const {
+    notifications,
+    unreadCount: notifUnreadCount,
+    markAllRead: markAllNotifRead,
+    markRead: markNotifRead,
+    addLocalNotification,
+  } = useNotifications();
 
   // Navigation & Search State
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'assignments' | 'resources'>('dashboard');
+  const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('all');
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
@@ -50,6 +70,7 @@ export function App() {
   const [isAddResourceOpen, setIsAddResourceOpen] = useState(false);
   const [resourceTargetAsgId, setResourceTargetAsgId] = useState<string | null>(null);
   const [isSetFocusOpen, setIsSetFocusOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Filtered Assignments & Resources
   const filteredAssignments = useMemo(() => {
@@ -73,6 +94,19 @@ export function App() {
     );
   }, [resources, searchQuery]);
 
+  const filteredClassmates = useMemo(() => {
+    if (!searchQuery.trim()) return classmates;
+    const q = searchQuery.toLowerCase();
+    return classmates.filter(
+      (m) =>
+        m.full_name.toLowerCase().includes(q) ||
+        (m.display_name && m.display_name.toLowerCase().includes(q)) ||
+        m.email.toLowerCase().includes(q) ||
+        (m.major && m.major.toLowerCase().includes(q)) ||
+        (m.bio && m.bio.toLowerCase().includes(q))
+    );
+  }, [classmates, searchQuery]);
+
   // Handle "Ask Advice" Trigger: Opens P2P Chat Thread linked to assignment
   const handleAskAdvice = async (peerId: string, peerName: string, asg: Assignment) => {
     if (!user) return;
@@ -93,6 +127,12 @@ export function App() {
     ]);
   };
 
+  const handleStartDirectChat = async (classmate: UserProfile) => {
+    if (!user) return;
+    await getOrCreateDirectConversation(classmate.id, classmate.full_name);
+    setIsChatOpen(true);
+  };
+
   const handleToggleComplete = async (asgId: string) => {
     if (!user) return;
     await toggleCompletion(asgId);
@@ -111,6 +151,11 @@ export function App() {
         },
         ...prev,
       ]);
+      addLocalNotification({
+        type: 'peer_completed',
+        title: `Task Completed!`,
+        body: `You marked "${target.title}" as done. Great progress!`,
+      });
     }
   };
 
@@ -131,8 +176,14 @@ export function App() {
     return (
       <>
         <LandingPage
-          onOpenSignIn={() => { setAuthMode('signin'); setIsAuthOpen(true); }}
-          onOpenSignUp={() => { setAuthMode('signup'); setIsAuthOpen(true); }}
+          onOpenSignIn={() => {
+            setAuthMode('signin');
+            setIsAuthOpen(true);
+          }}
+          onOpenSignUp={() => {
+            setAuthMode('signup');
+            setIsAuthOpen(true);
+          }}
         />
         <AuthModal
           isOpen={isAuthOpen}
@@ -160,13 +211,24 @@ export function App() {
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans">
       <Navbar
         currentTab={currentTab}
-        onSelectTab={setCurrentTab}
+        onSelectTab={(tab) => {
+          setCurrentTab(tab);
+          if (tab === 'dashboard') setSearchCategory('all');
+          if (tab === 'assignments') setSearchCategory('assignments');
+          if (tab === 'resources') setSearchCategory('resources');
+          if (tab === 'classmates') setSearchCategory('peers');
+        }}
         onOpenNewAssignment={() => setIsNewAsgOpen(true)}
         onOpenJoinBlock={() => setIsJoinBlockOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
         onOpenCanvasSync={() => setIsCanvasSyncOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
         unreadCount={conversations.length}
+        notifications={notifications}
+        notifUnreadCount={notifUnreadCount}
+        onMarkAllNotifRead={markAllNotifRead}
+        onMarkNotifRead={markNotifRead}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -175,6 +237,7 @@ export function App() {
           peers={peers}
           myFocusTitle={myFocusTaskTitle}
           onSetFocus={() => setIsSetFocusOpen(true)}
+          onSelectPeer={(_peer) => setCurrentTab('classmates')}
         />
 
         {/* Global Instant Search Bar */}
@@ -186,8 +249,9 @@ export function App() {
             setSearchCategory(cat);
             if (cat === 'assignments') setCurrentTab('assignments');
             if (cat === 'resources') setCurrentTab('resources');
+            if (cat === 'peers') setCurrentTab('classmates');
           }}
-          resultsCount={filteredAssignments.length + filteredResources.length}
+          resultsCount={filteredAssignments.length + filteredResources.length + filteredClassmates.length}
         />
 
         {/* View Router */}
@@ -279,6 +343,18 @@ export function App() {
             />
           </div>
         )}
+
+        {currentTab === 'classmates' && (
+          <ClassmatesView
+            block={block}
+            currentUserId={user.id}
+            isCurrentUserRep={isRep}
+            classmates={filteredClassmates}
+            peersPresence={peers}
+            onUpdateRole={updateMemberRole}
+            onStartDirectChat={handleStartDirectChat}
+          />
+        )}
       </main>
 
       {/* Modals & Drawers */}
@@ -294,6 +370,8 @@ export function App() {
           setIsAddResourceOpen(true);
         }}
         onRateResource={rateResource}
+        onDeleteAssignment={deleteAssignment}
+        onDeleteResource={deleteResource}
       />
 
       <CreateAssignmentModal
@@ -342,7 +420,9 @@ export function App() {
         onSelectConv={setActiveConversationId}
         messages={messages}
         currentUserId={user.id}
+        canModerate={canModerate}
         onSendMessage={(text) => sendMessage(text, selectedAssignment?.id)}
+        onDeleteMessage={deleteMessage}
       />
 
       <SetFocusModal
@@ -351,6 +431,11 @@ export function App() {
         assignments={assignments}
         currentFocusId={myFocusTaskId}
         onSelectFocus={updateMyFocus}
+      />
+
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
       />
     </div>
   );

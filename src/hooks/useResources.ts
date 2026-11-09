@@ -6,7 +6,7 @@ import { uploadStudyFile } from '@/lib/storageHelpers';
 import { generateUUID } from '@/lib/utils';
 
 export function useResources() {
-  const { user, block } = useAuth();
+  const { user, block, canModerate } = useAuth();
   const [resources, setResources] = useState<ResourceItem[]>([]);
   const [ratings, setRatings] = useState<Record<string, { avg: number; count: number; userScore: number | null }>>({});
 
@@ -44,7 +44,11 @@ export function useResources() {
           }
           const computed: Record<string, { avg: number; count: number; userScore: number | null }> = {};
           for (const [id, stats] of Object.entries(ratingMap)) {
-            computed[id] = { avg: stats.count > 0 ? stats.total / stats.count : 0, count: stats.count, userScore: stats.userScore };
+            computed[id] = {
+              avg: stats.count > 0 ? stats.total / stats.count : 0,
+              count: stats.count,
+              userScore: stats.userScore,
+            };
           }
           setRatings(computed);
         }
@@ -58,11 +62,14 @@ export function useResources() {
     loadResources();
     if (!isSupabaseConfigured || !block?.id) return;
 
-    const channel = supabase.channel(`realtime_resources_${block.id}`)
+    const channel = supabase
+      .channel(`realtime_resources_${block.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'resources' }, () => loadResources())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'resource_ratings' }, () => loadResources())
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [loadResources, block?.id]);
 
   const enrichedResources = useMemo(() => {
@@ -78,10 +85,19 @@ export function useResources() {
     if (!user) return;
     setRatings((prev) => {
       const existing = prev[resourceId] || { avg: rating, count: 0, userScore: null };
-      return { ...prev, [resourceId]: { avg: rating, count: existing.userScore ? existing.count : existing.count + 1, userScore: rating } };
+      return {
+        ...prev,
+        [resourceId]: {
+          avg: rating,
+          count: existing.userScore ? existing.count : existing.count + 1,
+          userScore: rating,
+        },
+      };
     });
     if (isSupabaseConfigured) {
-      await supabase.from('resource_ratings').upsert({ resource_id: resourceId, user_id: user.id, rating }, { onConflict: 'resource_id,user_id' });
+      await supabase
+        .from('resource_ratings')
+        .upsert({ resource_id: resourceId, user_id: user.id, rating }, { onConflict: 'resource_id,user_id' });
     }
   };
 
@@ -111,18 +127,20 @@ export function useResources() {
     setResources((prev) => [newRes, ...prev]);
 
     if (isSupabaseConfigured) {
-      await supabase.from('resources').insert([{
-        id: resId,
-        block_id: block.id,
-        assignment_id: validAsgId,
-        user_id: user.id,
-        title,
-        type: 'FILE',
-        url: fileUrl,
-        file_path: filePath,
-        file_type: newRes.file_type,
-        file_size: newRes.file_size,
-      }]);
+      await supabase.from('resources').insert([
+        {
+          id: resId,
+          block_id: block.id,
+          assignment_id: validAsgId,
+          user_id: user.id,
+          title,
+          type: 'FILE',
+          url: fileUrl,
+          file_path: filePath,
+          file_type: newRes.file_type,
+          file_size: newRes.file_size,
+        },
+      ]);
     }
   };
 
@@ -150,19 +168,48 @@ export function useResources() {
     setResources((prev) => [newRes, ...prev]);
 
     if (isSupabaseConfigured) {
-      await supabase.from('resources').insert([{
-        id: resId,
-        block_id: block.id,
-        assignment_id: validAsgId,
-        user_id: user.id,
-        title,
-        type: 'LINK',
-        url,
-        file_type: newRes.file_type,
-        file_size: newRes.file_size,
-      }]);
+      await supabase.from('resources').insert([
+        {
+          id: resId,
+          block_id: block.id,
+          assignment_id: validAsgId,
+          user_id: user.id,
+          title,
+          type: 'LINK',
+          url,
+          file_type: newRes.file_type,
+          file_size: newRes.file_size,
+        },
+      ]);
     }
   };
 
-  return { resources: enrichedResources, rateResource, uploadFile, addLink, refreshResources: loadResources };
+  // RBAC resource deletion: uploader or moderator
+  const deleteResource = async (resourceId: string): Promise<boolean> => {
+    const target = resources.find((r) => r.id === resourceId);
+    if (!target || !user) return false;
+    const isOwner = target.user_id === user.id;
+    if (!isOwner && !canModerate) return false;
+
+    setResources((prev) => prev.filter((r) => r.id !== resourceId));
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('resources').delete().eq('id', resourceId);
+      } catch (err) {
+        console.warn('Error deleting resource:', err);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  return {
+    resources: enrichedResources,
+    rateResource,
+    uploadFile,
+    addLink,
+    deleteResource,
+    refreshResources: loadResources,
+  };
 }

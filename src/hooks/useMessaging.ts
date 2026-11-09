@@ -5,7 +5,7 @@ import { useAuth } from './useAuth';
 import { generateUUID } from '@/lib/utils';
 
 export function useMessaging(initialActiveId?: string | null) {
-  const { user, block } = useAuth();
+  const { user, block, canModerate } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(initialActiveId || null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -40,12 +40,14 @@ export function useMessaging(initialActiveId?: string | null) {
           };
           setConversations([defaultChannel]);
           setActiveConversationId(defaultChannel.id);
-          await supabase.from('conversations').insert([{
-            id: defaultChannelId,
-            type: 'GROUP',
-            block_id: block.id,
-            title: defaultChannel.title,
-          }]);
+          await supabase.from('conversations').insert([
+            {
+              id: defaultChannelId,
+              type: 'GROUP',
+              block_id: block.id,
+              title: defaultChannel.title,
+            },
+          ]);
         }
       }
     } catch (e) {
@@ -69,16 +71,18 @@ export function useMessaging(initialActiveId?: string | null) {
           .order('created_at', { ascending: true });
 
         if (data) {
-          setMessages(data.map((m: any) => ({
-            id: m.id,
-            conversation_id: m.conversation_id,
-            sender_id: m.sender_id,
-            assignment_id: m.assignment_id,
-            content: m.content,
-            sender_name: m.sender?.full_name || 'Classmate',
-            sender_avatar: m.sender?.avatar_url,
-            created_at: m.created_at,
-          })));
+          setMessages(
+            data.map((m: any) => ({
+              id: m.id,
+              conversation_id: m.conversation_id,
+              sender_id: m.sender_id,
+              assignment_id: m.assignment_id,
+              content: m.content,
+              sender_name: m.sender?.full_name || 'Classmate',
+              sender_avatar: m.sender?.avatar_url,
+              created_at: m.created_at,
+            }))
+          );
         }
       }
     } finally {
@@ -93,15 +97,34 @@ export function useMessaging(initialActiveId?: string | null) {
 
     const channel = supabase
       .channel(`chat_${activeConversationId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${activeConversationId}`,
-      }, (payload) => {
-        const newMsg = payload.new as Message;
-        setMessages((prev) => (prev.some((m) => m.id === newMsg.id) ? prev : [...prev, newMsg]));
-      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${activeConversationId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as Message;
+          setMessages((prev) => (prev.some((m) => m.id === newMsg.id) ? prev : [...prev, newMsg]));
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${activeConversationId}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as any)?.id;
+          if (deletedId) {
+            setMessages((prev) => prev.filter((m) => m.id !== deletedId));
+          }
+        }
+      )
       .subscribe();
 
     return () => {
@@ -128,19 +151,48 @@ export function useMessaging(initialActiveId?: string | null) {
     setMessages((prev) => [...prev, newMsg]);
 
     if (isSupabaseConfigured) {
-      await supabase.from('messages').insert([{
-        id: msgId,
-        conversation_id: activeConversationId,
-        sender_id: user.id,
-        assignment_id: validAsgId,
-        content: content.trim(),
-      }]);
+      await supabase.from('messages').insert([
+        {
+          id: msgId,
+          conversation_id: activeConversationId,
+          sender_id: user.id,
+          assignment_id: validAsgId,
+          content: content.trim(),
+        },
+      ]);
     }
   };
 
-  const getOrCreateDirectConversation = async (peerId: string, peerName: string, assignmentId?: string, assignmentTitle?: string) => {
+  // RBAC message deletion: sender or moderator
+  const deleteMessage = async (messageId: string): Promise<boolean> => {
+    const target = messages.find((m) => m.id === messageId);
+    if (!target || !user) return false;
+    const isOwner = target.sender_id === user.id;
+    if (!isOwner && !canModerate) return false;
+
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('messages').delete().eq('id', messageId);
+      } catch (err) {
+        console.warn('Error deleting message:', err);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const getOrCreateDirectConversation = async (
+    peerId: string,
+    peerName: string,
+    assignmentId?: string,
+    assignmentTitle?: string
+  ) => {
     if (!block || !user) return null;
-    const existing = conversations.find((c) => c.type === 'DIRECT' && (c.title?.includes(peerName) || c.assignment_id === assignmentId));
+    const existing = conversations.find(
+      (c) => c.type === 'DIRECT' && (c.title?.includes(peerName) || c.assignment_id === assignmentId)
+    );
     if (existing) {
       setActiveConversationId(existing.id);
       return existing.id;
@@ -161,13 +213,15 @@ export function useMessaging(initialActiveId?: string | null) {
     setActiveConversationId(newConv.id);
 
     if (isSupabaseConfigured) {
-      await supabase.from('conversations').insert([{
-        id: convId,
-        type: 'DIRECT',
-        block_id: block.id,
-        assignment_id: validAsgId,
-        title: newConv.title,
-      }]);
+      await supabase.from('conversations').insert([
+        {
+          id: convId,
+          type: 'DIRECT',
+          block_id: block.id,
+          assignment_id: validAsgId,
+          title: newConv.title,
+        },
+      ]);
       await supabase.from('conversation_members').insert([
         { conversation_id: convId, user_id: user.id },
         { conversation_id: convId, user_id: peerId },
@@ -177,8 +231,14 @@ export function useMessaging(initialActiveId?: string | null) {
   };
 
   return {
-    conversations, activeConversationId, setActiveConversationId,
-    messages, isLoadingMessages, sendMessage, getOrCreateDirectConversation,
+    conversations,
+    activeConversationId,
+    setActiveConversationId,
+    messages,
+    isLoadingMessages,
+    sendMessage,
+    deleteMessage,
+    getOrCreateDirectConversation,
     refreshConversations: loadConversations,
   };
 }
