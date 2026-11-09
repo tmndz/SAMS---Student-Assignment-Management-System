@@ -66,7 +66,10 @@ export const OnlinePresenceBar: React.FC<OnlinePresenceBarProps> = ({
                         <span className="line-clamp-2">Focusing: {peer.current_task_title}</span>
                       </div>
                     ) : (
-                      <div className="mt-0.5 text-[10px] text-slate-400">Available online in block</div>
+                      <div className="mt-0.5 text-[10px] text-emerald-400 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        <span>Active now in block</span>
+                      </div>
                     )}
                   </div>
                 )}

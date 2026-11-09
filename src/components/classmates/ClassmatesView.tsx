@@ -300,6 +300,7 @@ export const ClassmatesView: React.FC<ClassmatesViewProps> = ({
                   ? 'idle'
                   : 'online'
                 : 'offline');
+            const isOnline = currentStatus === 'online' || currentStatus === 'focusing';
             const isFocusing = currentStatus === 'focusing';
             const activeTaskTitle = presence?.current_task_title || member.current_task_title;
             const activeAvatarUrl = presence?.user_avatar || member.avatar_url;
@@ -364,7 +365,7 @@ export const ClassmatesView: React.FC<ClassmatesViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Academic Info */}
+                  {/* Academic Info & Live Presence */}
                   <div className="flex items-center gap-2 text-[11px] text-slate-400 flex-wrap mb-2">
                     {member.major && (
                       <span className="flex items-center gap-1 text-slate-300">
@@ -376,6 +377,23 @@ export const ClassmatesView: React.FC<ClassmatesViewProps> = ({
                       <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-300 font-medium">
                         {member.year_level.toUpperCase()} YEAR
                       </span>
+                    )}
+                    {isOnline ? (
+                      <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Active now</span>
+                      </span>
+                    ) : currentStatus === 'idle' ? (
+                      <span className="flex items-center gap-1 text-[10px] text-amber-300 font-medium px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        <span>Away</span>
+                      </span>
+                    ) : presence?.last_seen && new Date(presence.last_seen).getTime() > 1000000000000 ? (
+                      <span className="text-[10px] text-slate-500">
+                        Seen {formatDistanceToNow(new Date(presence.last_seen), { addSuffix: true })}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-500">Offline</span>
                     )}
                   </div>
 

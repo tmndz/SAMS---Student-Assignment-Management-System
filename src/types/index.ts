@@ -27,6 +27,7 @@ export interface UserProfile {
   canvas_token?: string;
   current_task_id?: string | null;
   current_task_title?: string | null;
+  last_seen?: string;
   notification_prefs?: NotificationPrefs;
   created_at?: string;
   updated_at?: string;
