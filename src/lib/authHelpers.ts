@@ -78,7 +78,14 @@ export async function fetchBlockMembers(blockId: string): Promise<UserProfile[]>
   if (!isSupabaseConfigured || !blockId) return [];
   try {
     const { data } = await supabase.from('profiles').select('*').eq('block_id', blockId);
-    return (data || []) as UserProfile[];
+    if (!data) return [];
+    return data.map((m: any) => {
+      let avatar = m.avatar_url;
+      if (!avatar && m.avatar_file_path) {
+        avatar = supabase.storage.from('avatars').getPublicUrl(m.avatar_file_path).data?.publicUrl;
+      }
+      return { ...m, avatar_url: avatar };
+    }) as UserProfile[];
   } catch {
     return [];
   }

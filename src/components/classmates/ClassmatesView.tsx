@@ -87,7 +87,9 @@ export const ClassmatesView: React.FC<ClassmatesViewProps> = ({
       // Online status filter
       if (presenceFilter === 'online') {
         const pres = presenceMap.get(member.id);
-        const isOnline = pres?.status === 'online' || pres?.status === 'focusing' || member.id === currentUserId;
+        const isOnline = pres
+          ? (pres.status === 'online' || pres.status === 'focusing')
+          : (member.id === currentUserId && typeof document !== 'undefined' && document.visibilityState !== 'hidden');
         if (!isOnline) return false;
       }
 
@@ -110,7 +112,9 @@ export const ClassmatesView: React.FC<ClassmatesViewProps> = ({
     const students = classmates.filter((m) => m.role === 'student').length;
     const online = classmates.filter((m) => {
       const p = presenceMap.get(m.id);
-      return p?.status === 'online' || p?.status === 'focusing' || m.id === currentUserId;
+      return p
+        ? (p.status === 'online' || p.status === 'focusing')
+        : (m.id === currentUserId && typeof document !== 'undefined' && document.visibilityState !== 'hidden');
     }).length;
     return { total: classmates.length, reps, assistants, students, online };
   }, [classmates, presenceMap, currentUserId]);
@@ -289,8 +293,16 @@ export const ClassmatesView: React.FC<ClassmatesViewProps> = ({
           {filteredClassmates.map((member) => {
             const isMe = member.id === currentUserId;
             const presence = presenceMap.get(member.id);
-            const isOnline = presence?.status === 'online' || presence?.status === 'focusing' || isMe;
-            const isFocusing = presence?.status === 'focusing';
+            const currentStatus =
+              presence?.status ||
+              (isMe
+                ? typeof document !== 'undefined' && document.visibilityState === 'hidden'
+                  ? 'idle'
+                  : 'online'
+                : 'offline');
+            const isFocusing = currentStatus === 'focusing';
+            const activeTaskTitle = presence?.current_task_title || member.current_task_title;
+            const activeAvatarUrl = presence?.user_avatar || member.avatar_url;
 
             return (
               <div
@@ -306,9 +318,9 @@ export const ClassmatesView: React.FC<ClassmatesViewProps> = ({
                       <div className="relative">
                         <Avatar
                           name={member.full_name || member.email}
-                          src={member.avatar_url}
+                          src={activeAvatarUrl}
                           size="md"
-                          status={isFocusing ? 'focusing' : isOnline ? 'online' : 'offline'}
+                          status={currentStatus}
                         />
                       </div>
                       <div className="min-w-0">
@@ -375,10 +387,10 @@ export const ClassmatesView: React.FC<ClassmatesViewProps> = ({
                   )}
 
                   {/* Currently Focusing Pill */}
-                  {isFocusing && presence?.current_task_title && (
+                  {activeTaskTitle && (
                     <div className="mb-3 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-1.5 text-xs text-amber-300">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span className="truncate">Focusing: {presence.current_task_title}</span>
+                      <span className="truncate">Focusing: {activeTaskTitle}</span>
                     </div>
                   )}
                 </div>

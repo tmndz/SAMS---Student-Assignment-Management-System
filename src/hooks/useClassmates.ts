@@ -24,10 +24,21 @@ export function useClassmates() {
           .order('role', { ascending: false }); // reps & assistants first
 
         if (!error && data && data.length > 0) {
-          // If current user is in this block, make sure their profile is updated in list
-          let list = data as UserProfile[];
-          if (user && !list.some((m) => m.id === user.id)) {
-            list = [user, ...list];
+          // Resolve avatar public URLs if needed
+          let list = (data as any[]).map((m) => {
+            let avatar = m.avatar_url;
+            if (!avatar && m.avatar_file_path) {
+              avatar = supabase.storage.from('avatars').getPublicUrl(m.avatar_file_path).data?.publicUrl;
+            }
+            return { ...m, avatar_url: avatar } as UserProfile;
+          });
+
+          // Sync current user's latest profile in list
+          if (user) {
+            list = list.map((m) => (m.id === user.id ? { ...m, ...user } : m));
+            if (!list.some((m) => m.id === user.id)) {
+              list = [user, ...list];
+            }
           }
           setClassmates(list);
           return;

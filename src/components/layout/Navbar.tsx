@@ -48,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onMarkAllNotifRead,
   onMarkNotifRead,
 }) => {
-  const { user, block, isAuthenticated, signOut } = useAuth();
+  const { user, block, isAuthenticated, signOut, canModerate } = useAuth();
   const [copied, setCopied] = useState(false);
 
   const copyCode = (e: React.MouseEvent) => {
@@ -127,17 +127,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
-          {/* Canvas LMS Sync Trigger */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onOpenCanvasSync}
-            title="Canvas LMS Sync"
-            className="hidden sm:inline-flex"
-          >
-            <RefreshCw className="w-3.5 h-3.5 mr-1 text-indigo-400" />
-            <span className="text-xs">Canvas Sync</span>
-          </Button>
+          {/* Canvas LMS Sync Trigger — Restricted to Reps & Block Assistants */}
+          {canModerate && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onOpenCanvasSync}
+              title="Canvas LMS Sync"
+              className="hidden sm:inline-flex"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1 text-indigo-400" />
+              <span className="text-xs">Canvas Sync</span>
+            </Button>
+          )}
 
           {/* Cross-Platform Notification Bell */}
           <NotificationBell

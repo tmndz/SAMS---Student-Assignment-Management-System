@@ -10,7 +10,7 @@ import {
 import { Course, Assignment } from '@/types';
 
 export function useCanvasSync(onSyncSuccess?: (courses: Course[], assignments: Assignment[]) => void) {
-  const { block, updateBlockCanvasCredentials } = useAuth();
+  const { block, updateBlockCanvasCredentials, canModerate } = useAuth();
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(
     () => localStorage.getItem('blocksync_last_canvas_sync')
@@ -23,6 +23,12 @@ export function useCanvasSync(onSyncSuccess?: (courses: Course[], assignments: A
   } | null>(null);
 
   const syncCanvas = useCallback(async (domainInput?: string, tokenInput?: string) => {
+    if (!canModerate) {
+      return {
+        success: false,
+        error: 'Canvas LMS synchronization is restricted to Cohort Representatives and Block Assistants.',
+      };
+    }
     if (!block?.id) {
       return { success: false, error: 'Please join or create an academic block first.' };
     }
@@ -153,7 +159,7 @@ export function useCanvasSync(onSyncSuccess?: (courses: Course[], assignments: A
     } finally {
       setIsSyncing(false);
     }
-  }, [block, updateBlockCanvasCredentials, onSyncSuccess]);
+  }, [block, canModerate, updateBlockCanvasCredentials, onSyncSuccess]);
 
   return { isSyncing, lastSynced, syncStatus, syncCanvas };
 }

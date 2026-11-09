@@ -232,14 +232,6 @@ export function App() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Live Non-Intrusive Presence Bar */}
-        <OnlinePresenceBar
-          peers={peers}
-          myFocusTitle={myFocusTaskTitle}
-          onSetFocus={() => setIsSetFocusOpen(true)}
-          onSelectPeer={(_peer) => setCurrentTab('classmates')}
-        />
-
         {/* Global Instant Search Bar */}
         <QuickSearchBar
           value={searchQuery}
@@ -307,12 +299,14 @@ export function App() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-white">Academic Cohort Assignments</h2>
-              <button
-                onClick={() => setIsCanvasSyncOpen(true)}
-                className="text-xs font-semibold text-indigo-400 hover:text-indigo-300"
-              >
-                Sync with Canvas LMS &rarr;
-              </button>
+              {canModerate && (
+                <button
+                  onClick={() => setIsCanvasSyncOpen(true)}
+                  className="text-xs font-semibold text-indigo-400 hover:text-indigo-300"
+                >
+                  Sync with Canvas LMS &rarr;
+                </button>
+              )}
             </div>
             <AssignmentList
               assignments={filteredAssignments}
@@ -345,15 +339,24 @@ export function App() {
         )}
 
         {currentTab === 'classmates' && (
-          <ClassmatesView
-            block={block}
-            currentUserId={user.id}
-            isCurrentUserRep={isRep}
-            classmates={filteredClassmates}
-            peersPresence={peers}
-            onUpdateRole={updateMemberRole}
-            onStartDirectChat={handleStartDirectChat}
-          />
+          <div className="space-y-6">
+            {/* Live Online Presence Bar — strictly displayed in Classmates tab */}
+            <OnlinePresenceBar
+              peers={peers}
+              myFocusTitle={myFocusTaskTitle}
+              onSetFocus={() => setIsSetFocusOpen(true)}
+            />
+
+            <ClassmatesView
+              block={block}
+              currentUserId={user.id}
+              isCurrentUserRep={isRep}
+              classmates={filteredClassmates}
+              peersPresence={peers}
+              onUpdateRole={updateMemberRole}
+              onStartDirectChat={handleStartDirectChat}
+            />
+          </div>
         )}
       </main>
 

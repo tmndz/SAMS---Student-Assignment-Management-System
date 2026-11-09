@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
 import { useCanvasSync } from '@/hooks/useCanvasSync';
-import { RefreshCw, ExternalLink, Globe, Key, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { RefreshCw, ExternalLink, Globe, Key, CheckCircle2, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 interface CanvasSyncModalProps {
   isOpen: boolean;
@@ -13,14 +13,20 @@ interface CanvasSyncModalProps {
 }
 
 export const CanvasSyncModal: React.FC<CanvasSyncModalProps> = ({ isOpen, onClose, onSyncComplete }) => {
-  const { block } = useAuth();
+  const { block, canModerate } = useAuth();
   const [domain, setDomain] = useState(block?.canvas_domain || 'canvas.instructure.com');
   const [token, setToken] = useState(block?.canvas_token || '');
   const { isSyncing, lastSynced, syncStatus, syncCanvas } = useCanvasSync();
   const [success, setSuccess] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const handleSync = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canModerate) {
+      setSyncError('Only Block Representatives and Block Assistants can run Canvas LMS synchronization.');
+      return;
+    }
+    setSyncError(null);
     const res = await syncCanvas(domain, token);
     if (res.success) {
       setSuccess(true);
@@ -29,6 +35,8 @@ export const CanvasSyncModal: React.FC<CanvasSyncModalProps> = ({ isOpen, onClos
         setSuccess(false);
         onClose();
       }, 1500);
+    } else if (res.error) {
+      setSyncError(res.error);
     }
   };
 
@@ -45,6 +53,25 @@ export const CanvasSyncModal: React.FC<CanvasSyncModalProps> = ({ isOpen, onClos
       description="Automatically import and update deadlines, course materials, and Canvas links."
     >
       <form onSubmit={handleSync} className="space-y-4">
+        {!canModerate && (
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
+            <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+            <div>
+              <p className="font-bold">Sync Access Restricted</p>
+              <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                Regular student accounts cannot initiate cohort Canvas sync. Please ask your Block Representative or Block Assistant to sync Canvas deadlines for the cohort.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {syncError && (
+          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span>{syncError}</span>
+          </div>
+        )}
+
         {success && (
           <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2 animate-in zoom-in-95">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -58,6 +85,7 @@ export const CanvasSyncModal: React.FC<CanvasSyncModalProps> = ({ isOpen, onClos
           value={domain}
           onChange={(e) => setDomain(e.target.value)}
           icon={<Globe className="w-4 h-4" />}
+          disabled={!canModerate}
           required
         />
 
@@ -69,6 +97,7 @@ export const CanvasSyncModal: React.FC<CanvasSyncModalProps> = ({ isOpen, onClos
             value={token}
             onChange={(e) => setToken(e.target.value)}
             icon={<Key className="w-4 h-4" />}
+            disabled={!canModerate}
           />
           <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1">
             <span>Find in Canvas: Account &gt; Settings &gt; Approved Integrations &gt; New Access Token</span>
@@ -94,12 +123,14 @@ export const CanvasSyncModal: React.FC<CanvasSyncModalProps> = ({ isOpen, onClos
 
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            {canModerate ? 'Cancel' : 'Close'}
           </Button>
-          <Button type="submit" variant="primary" size="sm" isLoading={isSyncing}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-            {isSyncing ? 'Syncing...' : 'Sync Now'}
-          </Button>
+          {canModerate && (
+            <Button type="submit" variant="primary" size="sm" isLoading={isSyncing}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+              {isSyncing ? 'Syncing...' : 'Sync Now'}
+            </Button>
+          )}
         </div>
       </form>
     </Modal>

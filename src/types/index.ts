@@ -25,6 +25,8 @@ export interface UserProfile {
   block_id: string | null;
   role: UserRole;
   canvas_token?: string;
+  current_task_id?: string | null;
+  current_task_title?: string | null;
   notification_prefs?: NotificationPrefs;
   created_at?: string;
   updated_at?: string;
